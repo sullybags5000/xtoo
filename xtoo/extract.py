@@ -1,8 +1,10 @@
 """Text extraction only: never execute macros, scripts, or embedded objects."""
 
-from html.parser import HTMLParser
 from pathlib import Path
 from zipfile import ZipFile
+
+from . import mail
+from .text import decode, html_to_text
 
 TEXT_EXTENSIONS = {".txt", ".md", ".rst", ".csv", ".tsv", ".json", ".xml", ".yaml", ".yml", ".log"}
 # Scripts and configuration-as-code are read as plain text and never executed.
@@ -41,40 +43,10 @@ SCRIPT_EXTENSIONS = {
     ".properties",
 }
 MARKUP_EXTENSIONS = {".html", ".htm"}
+EMAIL_EXTENSIONS = mail.EMAIL_EXTENSIONS
 # Formats that need a parser and must never be decoded as text.
-DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx"}
+DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx"} | EMAIL_EXTENSIONS
 SUPPORTED = TEXT_EXTENSIONS | SCRIPT_EXTENSIONS | MARKUP_EXTENSIONS | DOCUMENT_EXTENSIONS
-
-
-class HTMLText(HTMLParser):
-    def __init__(self):
-        super().__init__()
-        self.parts = []
-        self.hidden = 0
-
-    def handle_starttag(self, tag, attrs):
-        if tag in {"script", "style"}:
-            self.hidden += 1
-        elif tag in {"p", "div", "br", "li", "h1", "h2", "tr"}:
-            self.parts.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in {"script", "style"}:
-            self.hidden = max(0, self.hidden - 1)
-
-    def handle_data(self, data):
-        if not self.hidden:
-            self.parts.append(data)
-
-
-def decode(data: bytes) -> str:
-    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return data.decode("utf-16", errors="replace")
-    try:
-        return data.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        # Windows scripts are frequently saved in the legacy ANSI code page.
-        return data.decode("cp1252", errors="replace")
 
 
 def chunks(path: Path, text_extensions: frozenset | None = None):
@@ -86,11 +58,9 @@ def chunks(path: Path, text_extensions: frozenset | None = None):
         suffix in text_extensions or suffix in MARKUP_EXTENSIONS
     ):
         text = decode(path.read_bytes())
-        if suffix in MARKUP_EXTENSIONS:
-            parser = HTMLText()
-            parser.feed(text)
-            text = "".join(parser.parts)
-        yield text
+        yield html_to_text(text) if suffix in MARKUP_EXTENSIONS else text
+    elif suffix in EMAIL_EXTENSIONS:
+        yield from mail.chunks(path)
     elif suffix == ".pdf":
         from pypdf import PdfReader
 

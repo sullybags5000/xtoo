@@ -18,6 +18,8 @@ flowchart LR
 | `xtoo/config.py` | TOML loading, validation, XDG paths, nested-root de-duplication |
 | `xtoo/indexer.py` | Incremental traversal, extraction, stale/deleted-file handling |
 | `xtoo/extract.py` | Extension groups and text extraction; scripts are read, never executed |
+| `xtoo/mail.py` | Exported `.msg` and `.eml` messages; headers, attachment names, body |
+| `xtoo/text.py` | Shared byte decoding and HTML-to-text helpers |
 | `xtoo/store.py` | SQLite schema, FTS5 index, searches, previews, metadata |
 | `xtoo/web.py` | Local API, static UI, host/CSP/security headers |
 | `xtoo/static/` | Search UI, filters, preview, refresh, responsive layout |
@@ -27,6 +29,11 @@ The index is `~/.local/share/xtoo/index.sqlite3` by default, with SQLite WAL
 sidecars. Source files are never rewritten. Missing roots retain cached rows and
 report an error; successful traversals remove rows for deleted files.
 
+Mail is indexed from files exported by
+[`scripts/Export-OutlookMail.ps1`](../scripts/Export-OutlookMail.ps1), which runs
+on Windows against a local Outlook profile. Xtoo itself never connects to
+Outlook or Microsoft 365; see [Email](email.md).
+
 The current release has no network connectors, authentication, or remote AI
 service. Runtime dependencies are FastAPI, Uvicorn, pypdf, python-docx,
-openpyxl, python-pptx, and `tomli` on Python <3.11.
+openpyxl, python-pptx, olefile, and `tomli` on Python <3.11.

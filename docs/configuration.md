@@ -28,6 +28,7 @@ file is opened. Everything else is ignored.
 | Scripts and configuration-as-code | `.ps1`, `.psm1`, `.psd1`, `.bat`, `.cmd`, `.vbs`, `.sh`, `.bash`, `.zsh`, `.ksh`, `.fish`, `.awk`, `.py`, `.pyw`, `.pl`, `.pm`, `.rb`, `.lua`, `.php`, `.r`, `.js`, `.mjs`, `.cjs`, `.ts`, `.sql`, `.mk`, `.tf`, `.ini`, `.cfg`, `.conf`, `.toml`, `.properties` |
 | Markup | `.html`, `.htm` |
 | Parsed documents | `.pdf`, `.docx`, `.xlsx`, `.pptx` |
+| Exported mail | `.msg`, `.eml` — see [Email](email.md) |
 
 > [!IMPORTANT]
 > Scripts are decoded and stored as text; Xtoo never runs them. Files that are
@@ -35,8 +36,8 @@ file is opened. Everything else is ignored.
 > covers most `.bat` and `.ps1` files saved by Windows editors.
 
 Use `extra_text_extensions` for anything else that is plain text, such as
-`['.go', '.java']`. `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.html`, and `.htm` are
-rejected there because they already have a dedicated parser. Secret-bearing
+`['.go', '.java']`. Formats with a dedicated parser (`.pdf`, `.docx`, `.xlsx`,
+`.pptx`, `.html`, `.htm`, `.msg`, `.eml`) are rejected there. Secret-bearing
 files such as `.env`, `.pem`, and `.tfvars` are not indexed by default; add them
 only if you accept their contents being stored in the index.
 
