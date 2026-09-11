@@ -1,7 +1,7 @@
 import os
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Settings
@@ -147,7 +147,7 @@ class Indexer:
         finally:
             self._update(
                 running=False,
-                last_finished=datetime.now(UTC).isoformat(),
+                last_finished=datetime.now(timezone.utc).isoformat(),
                 duration_seconds=round(time.monotonic() - started, 2),
                 **counters,
             )
