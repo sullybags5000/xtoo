@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Xtoo · Desktop search</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Xtoo home"
+        ><span class="brand-icon">x</span>xtoo<span class="version"
+          >LOCAL</span
+        ></a
+      >
+      <div class="sidebar-label">YOUR LIBRARY</div>
+      <div class="source active">
+        <span>▤ &nbsp; Local documents</span><span id="library-count">0</span>
+      </div>
+      <div class="sidebar-label">SOURCES</div>
+      <ul id="folders" class="folders"></ul>
+      <p class="hint">Choose folders in your local configuration file.</p>
+      <div class="future">
+        <strong>Coming next</strong>
+        <p>
+          Outlook and Confluence connectors will be added after access is
+          configured.
+        </p>
+      </div>
+      <div class="local-note">
+        <span class="dot"></span> Search stays on this laptop
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">YOUR PERSONAL SEARCH SPACE</p>
+          <h1>Find it. Get back to work.</h1>
+          <p class="subtitle">
+            Documents, notes, and ideas. One place to look.
+          </p>
+        </div>
+        <button id="refresh" class="secondary">Refresh index</button>
+      </header>
+      <section class="search-bar" aria-label="Search controls">
+        <span aria-hidden="true" class="search-icon">⌕</span>
+        <label class="sr-only" for="query">Search documents</label>
+        <input
+          id="query"
+          type="search"
+          placeholder="Search your documents…"
+          maxlength="500"
+          autocomplete="off"
+          autofocus
+        />
+        <kbd>/</kbd>
+        <label class="sr-only" for="kind">File type</label>
+        <select id="kind">
+          <option value="">All file types</option>
+        </select>
+      </section>
+      <div class="status-row">
+        <span id="result-count" role="status" aria-live="polite"
+          >Loading your library…</span
+        ><span id="index-status">Connecting…</span>
+      </div>
+      <div id="notice" class="notice" role="alert" hidden></div>
+      <details id="scan-errors" hidden>
+        <summary id="error-summary"></summary>
+        <ul id="error-list"></ul>
+      </details>
+      <section class="workspace">
+        <div class="results-pane">
+          <div id="results" aria-label="Search results"></div>
+          <nav class="pagination" aria-label="Result pages">
+            <button id="previous" class="secondary" disabled>Previous</button
+            ><span id="page"></span
+            ><button id="next" class="secondary" disabled>Next</button>
+          </nav>
+        </div>
+        <aside class="preview" aria-label="Document preview">
+          <div id="preview-empty" class="empty preview-placeholder">
+            <span class="empty-icon">▤</span>
+            <h2>A closer look</h2>
+            <p>Select a result to read its text here.</p>
+          </div>
+          <article id="preview-document" hidden>
+            <div class="preview-top">
+              <span id="preview-kind" class="badge"></span
+              ><span>TEXT PREVIEW</span>
+            </div>
+            <h2 id="preview-title"></h2>
+            <p id="preview-meta" class="hint"></p>
+            <div class="path-row">
+              <code id="preview-path"></code
+              ><button id="copy-path" class="secondary">Copy path</button>
+            </div>
+            <p id="preview-warning" class="hint"></p>
+            <pre id="preview-content"></pre>
+          </article>
+        </aside>
+      </section>
+      <footer>Local full-text search · No AI service required</footer>
+    </main>
+  </body>
+</html>

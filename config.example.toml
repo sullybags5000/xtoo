@@ -1,0 +1,14 @@
+# Reference only. Actual settings belong in ~/.config/xtoo/config.toml.
+# Windows folders must use WSL paths, with spaces inside the quotes.
+folders = [
+  "/mnt/c/Users/YOUR_WINDOWS_USER/Documents",
+  # "/mnt/c/Users/YOUR_WINDOWS_USER/OneDrive - YOUR COMPANY",
+  # "/mnt/c/Users/YOUR_WINDOWS_USER/Downloads",
+]
+
+# Keep the index in WSL's Linux filesystem, outside the Git checkout.
+# Omit data_dir to use ~/.local/share/xtoo (or $XDG_DATA_HOME/xtoo).
+interval_seconds = 300
+max_file_mb = 25
+excluded_dirs = [".git", ".venv", "venv", "node_modules", "AppData", "$Recycle.Bin", "__pycache__"]
+
