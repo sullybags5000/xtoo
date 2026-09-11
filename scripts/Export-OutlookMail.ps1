@@ -35,7 +35,7 @@
     Unattended form, suitable for a scheduled task.
 
 .EXAMPLE
-    .\Export-OutlookMail.ps1 -FolderPath 'Inbox\JIRA' -Since '2025-07-29' -Destination 'C:\Users\me\Documents\MailExport'
+    .\Export-OutlookMail.ps1 -FolderPath 'Inbox\Projects' -Since '2025-07-29' -Destination 'C:\Users\me\Documents\MailExport'
     Tops up a folder that was already exported as far as 29 July 2025.
 #>
 
