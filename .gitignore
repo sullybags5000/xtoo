@@ -16,3 +16,4 @@ config.toml
 data/
 .coverage
 htmlcov/
+.serena/
