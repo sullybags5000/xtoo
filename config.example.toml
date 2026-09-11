@@ -11,4 +11,3 @@ folders = [
 interval_seconds = 300
 max_file_mb = 25
 excluded_dirs = [".git", ".venv", "venv", "node_modules", "AppData", "$Recycle.Bin", "__pycache__"]
-
