@@ -7,7 +7,13 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib
 
-from .extract import DOCUMENT_EXTENSIONS, MARKUP_EXTENSIONS, SCRIPT_EXTENSIONS, TEXT_EXTENSIONS
+from .extract import (
+    DOCUMENT_EXTENSIONS,
+    MARKUP_EXTENSIONS,
+    SCRIPT_EXTENSIONS,
+    SUPPORTED,
+    TEXT_EXTENSIONS,
+)
 
 
 def config_path() -> Path:
@@ -51,7 +57,7 @@ class Settings:
 
     @property
     def supported_extensions(self) -> frozenset[str]:
-        return self.text_extensions | MARKUP_EXTENSIONS | DOCUMENT_EXTENSIONS
+        return frozenset(SUPPORTED | set(self.extra_text_extensions))
 
 
 def load_settings(path: Path) -> Settings:

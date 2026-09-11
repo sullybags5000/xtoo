@@ -1,10 +1,12 @@
 import json
 import os
+import struct
 import subprocess
 import sys
 
 import pytest
 from fastapi.testclient import TestClient
+from outlook_msg import build as build_msg
 
 from xtoo.config import Settings, load_settings
 from xtoo.extract import extract_text
@@ -168,6 +170,66 @@ def test_extra_text_extensions_extend_and_protect_parsers(tmp_path):
         config.write_text(f"folders = {json.dumps([str(root)])}\n{text}\n")
         with pytest.raises(ValueError):
             load_settings(config)
+
+
+def utf16(value):
+    return value.encode("utf-16-le")
+
+
+def test_outlook_msg_extraction_and_search(library):
+    root, _, store, indexer = library
+    # PR_MESSAGE_DELIVERY_TIME as a MAPI FILETIME property.
+    properties = b"\x00" * 32 + struct.pack("<IIQ", 0x0E060040, 6, 133000000000000000)
+    (root / "Upgrade window_20260909_101402.msg").write_bytes(
+        build_msg(
+            {
+                "__substg1.0_0037001F": utf16("Cluster upgrade window"),
+                "__substg1.0_0C1A001F": utf16("Jane Doe"),
+                "__substg1.0_5D01001F": utf16("jane.doe@example.com"),
+                "__substg1.0_0E04001F": utf16("Sam Lee; Platform Team"),
+                "__substg1.0_1013001F": utf16("<p>Approve the window</p><script>bad()</script>"),
+                "__properties_version1.0": properties,
+                "__attach_version1.0_#00000000": {"__substg1.0_3707001F": utf16("runbook.pdf")},
+            }
+        )
+    )
+    assert indexer.scan()["indexed"] == 1
+    content = store.document(store.search("upgrade")["items"][0]["id"])["content"]
+    assert "Subject: Cluster upgrade window" in content
+    assert "From: Jane Doe <jane.doe@example.com>" in content
+    assert "Date: 2022-06-18" in content  # FILETIME is decoded, not left as raw bytes
+    assert "Attachments: runbook.pdf" in content
+    assert "Approve the window" in content and "bad()" not in content
+    for query in ("jane.doe", "platform", "runbook", "approve"):
+        assert store.search(query)["total"] == 1, query
+    assert store.search("cluster", "msg")["total"] == 1
+
+
+def test_eml_extraction_and_unreadable_message(library):
+    root, _, store, indexer = library
+    (root / "reply.eml").write_bytes(
+        b"From: Bob Smith <bob@example.com>\r\n"
+        b"To: dave@example.com\r\n"
+        b"Subject: Re: cluster upgrade window\r\n"
+        b"Date: Wed, 9 Sep 2026 10:14:02 +0100\r\n"
+        b'Content-Type: multipart/mixed; boundary="b1"\r\n\r\n'
+        b"--b1\r\n"
+        b'Content-Type: text/html; charset="utf-8"\r\n\r\n'
+        b"<p>Approved &amp; scheduled.</p><style>hidden{}</style>\r\n"
+        b"--b1\r\n"
+        b'Content-Disposition: attachment; filename="change-request.pdf"\r\n\r\n'
+        b"ABC\r\n--b1--\r\n"
+    )
+    (root / "truncated.msg").write_bytes(b"not a compound file")
+    result = indexer.scan()
+    assert result["indexed"] == 1
+    assert result["error_count"] == 1  # the unreadable message is reported, not indexed
+    content = store.document(store.search("scheduled")["items"][0]["id"])["content"]
+    assert "Subject: Re: cluster upgrade window" in content
+    assert "Attachments: change-request.pdf" in content
+    assert "Approved & scheduled." in content and "hidden" not in content
+    assert store.search("bob@example.com")["total"] == 1
+    assert store.search("", "eml")["total"] == 1
 
 
 def test_configuration_validation_and_nested_roots(tmp_path):

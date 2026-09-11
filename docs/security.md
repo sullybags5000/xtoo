@@ -21,6 +21,10 @@ contain hostnames, connection strings, or credentials, and that text is copied
 into the index; exclude those directories or narrow `folders` if the index
 should not hold them.
 
-Before indexing work content, confirm that local indexing and database storage
-are allowed by company policy. No Microsoft, Confluence, or AI credentials are
+Exported mail is treated the same way: `.msg` and `.eml` files are parsed as
+data, attachments are never opened or decoded, and message text is copied into
+the index. An export is a second unencrypted copy of mailbox content on disk.
+
+Before indexing work content, confirm that local indexing, mail export, and
+database storage are allowed by company policy. No Microsoft, Confluence, or AI credentials are
 used by this release.

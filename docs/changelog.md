@@ -10,6 +10,11 @@
 - Added a `cp1252` decoding fallback for files that are not valid UTF-8.
 - Added `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox`, `site-packages`,
   `.terraform`, `.idea`, and `.vs` to the default excluded directories.
+- Added email indexing for exported `.msg` and `.eml` files, covering headers,
+  attachment filenames, and plain-text or HTML bodies.
+- Added `scripts/Export-OutlookMail.ps1`, an incremental Outlook export for
+  Windows, and the [Email](email.md) guide.
+- Added `olefile` as a runtime dependency for `.msg` parsing.
 
 ## 0.1.1 — 2026-09-11
 
