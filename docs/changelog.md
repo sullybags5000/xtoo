@@ -14,6 +14,9 @@
   attachment filenames, and plain-text or HTML bodies.
 - Added `scripts/Export-OutlookMail.ps1`, an incremental Outlook export for
   Windows, and the [Email](email.md) guide.
+- Added `scripts/mail_coverage.py`, which reports the message count and date
+  range of each folder in an existing export so a top-up can start where it ends.
+- Added `-Since` to the export script for topping up an existing export.
 - Added `olefile` as a runtime dependency for `.msg` parsing.
 
 ## 0.1.1 — 2026-09-11

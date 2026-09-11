@@ -39,7 +39,7 @@ def text_value(data, name: str) -> str:
     return text.replace("\x00", "").strip()
 
 
-def filetime(properties) -> str:
+def filetime(properties):
     """Read the first available timestamp from a fixed-width MAPI property stream."""
     properties = properties or b""
     for tag in (DELIVERY_TIME, SUBMIT_TIME):
@@ -49,11 +49,33 @@ def filetime(properties) -> str:
             value = int.from_bytes(properties[offset + 8 : offset + 16], "little")
             if 0 < value < 2**62:
                 try:
-                    moment = FILETIME_EPOCH + timedelta(microseconds=value // 10)
+                    return FILETIME_EPOCH + timedelta(microseconds=value // 10)
                 except OverflowError:
                     continue
-                return moment.strftime("%Y-%m-%d %H:%M UTC")
-    return ""
+    return None
+
+
+def timestamp(properties) -> str:
+    moment = filetime(properties)
+    return moment.strftime("%Y-%m-%d %H:%M UTC") if moment else ""
+
+
+def received(path: Path):
+    """Return when a message was received, for reporting on an export's coverage."""
+    if path.suffix.lower() == ".msg":
+        import olefile
+
+        with olefile.OleFileIO(path) as container:
+            for entry in container.listdir():
+                if len(entry) == 1 and entry[0].lower() == PROPERTIES:
+                    with container.openstream(entry) as stream:
+                        return filetime(stream.read())
+        return None
+    header = message_from_bytes(path.read_bytes(), policy=policy.default).get("Date")
+    try:
+        return header.datetime if header is not None else None
+    except (AttributeError, ValueError):
+        return None
 
 
 def message_chunks(listing, read):
@@ -79,7 +101,7 @@ def message_chunks(listing, read):
             "From": sender,
             "To": value(DISPLAY_TO),
             "Cc": value(DISPLAY_CC),
-            "Date": filetime(read(properties) if properties is not None else None),
+            "Date": timestamp(read(properties) if properties is not None else None),
         }
     )
     names = sorted(
