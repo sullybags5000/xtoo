@@ -48,9 +48,9 @@ python scripts/mail_coverage.py /mnt/c/Users/YOU/Documents/Outlook_MSG_Export
 ```
 
 ```text
-folder                                     messages    earliest      latest  unreadable
-mailbox_-_Inbox             4821  2024-03-04  2025-08-14           2
-mailbox_-_Inbox_-_JIRA     19044  2023-11-02  2025-07-29
+folder                       messages    earliest      latest  unreadable
+mailbox_-_Inbox                  4821  2024-03-04  2025-08-14           2
+mailbox_-_Inbox_-_Projects      19044  2023-11-02  2025-07-29
 ```
 
 Each Outlook folder is usually exported into its own directory and stops at its
@@ -58,7 +58,7 @@ own date, which is why the report is per directory rather than a single figure.
 Use a folder's `latest` date as `-Since` when topping it up:
 
 ```powershell
-.\Export-OutlookMail.ps1 -FolderPath 'Inbox\JIRA' -Since '2025-07-29' -Destination 'C:\Users\YOU\Documents\MailExport'
+.\Export-OutlookMail.ps1 -FolderPath 'Inbox\Projects' -Since '2025-07-29' -Destination 'C:\Users\YOU\Documents\MailExport'
 ```
 
 Export the top-up to a **new** destination rather than back into the old tree.
