@@ -33,6 +33,39 @@ searchable.
 > attachment is never opened, decoded, or executed. To search inside attachments,
 > save them as files into an indexed folder.
 
+## Using an export you already have
+
+Any directory tree of `.msg` or `.eml` files works, whatever produced it and
+however its files are named. Xtoo recurses into subdirectories, so pointing
+`folders` at the top of an existing export indexes every folder beneath it. A
+tree exported by another tool needs no conversion and no renaming.
+
+To find where such an export stops, so a top-up does not re-export what you
+already have:
+
+```bash
+python scripts/mail_coverage.py /mnt/c/Users/YOU/Documents/Outlook_MSG_Export
+```
+
+```text
+folder                                     messages    earliest      latest  unreadable
+mailbox_-_Inbox             4821  2024-03-04  2025-08-14           2
+mailbox_-_Inbox_-_JIRA     19044  2023-11-02  2025-07-29
+```
+
+Each Outlook folder is usually exported into its own directory and stops at its
+own date, which is why the report is per directory rather than a single figure.
+Use a folder's `latest` date as `-Since` when topping it up:
+
+```powershell
+.\Export-OutlookMail.ps1 -FolderPath 'Inbox\JIRA' -Since '2025-07-29' -Destination 'C:\Users\YOU\Documents\MailExport'
+```
+
+Export the top-up to a **new** destination rather than back into the old tree.
+The two naming schemes cannot recognise each other, so keeping them apart makes
+the boundary obvious; both directories can be indexed at once. Expect a few
+duplicated messages from the boundary day itself, since `-Since` is inclusive.
+
 ## Step 1: export from Outlook
 
 Run in Windows PowerShell, not in WSL. Outlook must be installed and signed in;
@@ -108,6 +141,7 @@ skipped cheaply.
 | Limitation | Detail |
 | --- | --- |
 | Deletions are not mirrored | A message deleted in Outlook keeps its exported file, and stays searchable, until you delete the file. |
+| Mixed exports can overlap | Topping up from a date already covered exports those messages again under a different name, and they then appear twice in results. |
 | Moves create a second copy | Exporting the same message from two folders writes two files, because the Outlook entry ID differs per folder. |
 | RTF-only bodies | A `.msg` with neither a plain-text nor an HTML body indexes headers only. Outlook has written HTML bodies by default for many years, so this affects mostly old messages. |
 | Attachment contents | Indexed by filename only. |

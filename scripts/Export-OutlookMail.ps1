@@ -18,6 +18,11 @@
 .PARAMETER Days
     Only export messages received in the last N days. Use 0 for the whole folder.
 
+.PARAMETER Since
+    Only export messages received on or after this date, for example '2025-08-14'.
+    Takes precedence over -Days. Use it to top up an export that already covers
+    older mail; scripts/mail_coverage.py reports the date each folder stops at.
+
 .PARAMETER IncludeSubfolders
     Also export every folder beneath FolderPath, into matching subdirectories.
 
@@ -28,6 +33,10 @@
 .EXAMPLE
     .\Export-OutlookMail.ps1 -FolderPath 'Inbox\Projects' -Days 30 -Destination 'C:\Users\me\Documents\MailExport'
     Unattended form, suitable for a scheduled task.
+
+.EXAMPLE
+    .\Export-OutlookMail.ps1 -FolderPath 'Inbox\JIRA' -Since '2025-07-29' -Destination 'C:\Users\me\Documents\MailExport'
+    Tops up a folder that was already exported as far as 29 July 2025.
 #>
 
 [CmdletBinding()]
@@ -35,6 +44,7 @@ param(
     [string]$FolderPath,
     [string]$Destination = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MailExport'),
     [int]$Days = 90,
+    [datetime]$Since = [datetime]::MinValue,
     [switch]$IncludeSubfolders
 )
 
@@ -100,6 +110,17 @@ function Get-EntryTag([string]$entryId) {
     }
 }
 
+function Get-ItemDate($item) {
+    # Sent Items and drafts may carry no ReceivedTime, and unsent mail reports year 4501.
+    foreach ($name in 'ReceivedTime', 'SentOn', 'CreationTime') {
+        try { $value = $item.$name } catch { continue }
+        if ($value -is [datetime] -and $value.Year -ge 1900 -and $value.Year -le 2400) {
+            return $value
+        }
+    }
+    return $null
+}
+
 function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
     if (-not (Test-Path -LiteralPath $target)) {
         $null = New-Item -ItemType Directory -Path $target -Force
@@ -109,9 +130,12 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
         # Restrict filters inside Outlook and is far faster than walking every item. Its
         # date literal is locale sensitive, so every item is re-checked below regardless.
         try {
-            $items = $items.Restrict("[ReceivedTime] >= '" + $cutoff.ToString('MM/dd/yyyy HH:mm') + "'")
+            $filtered = $items.Restrict("[ReceivedTime] >= '" + $cutoff.ToString('MM/dd/yyyy HH:mm') + "'")
+            # An empty result in a folder that holds mail means the property does not
+            # apply here, as in Sent Items. Fall back to the full, client-filtered set.
+            if ($filtered.Count -gt 0 -or $items.Count -eq 0) { $items = $filtered }
         } catch {
-            Write-Verbose "Restrict was rejected; filtering on the client instead."
+            Write-Verbose 'Restrict was rejected; filtering on the client instead.'
         }
     }
 
@@ -119,8 +143,8 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
     foreach ($item in $items) {
         try {
             if ($item.MessageClass -notlike 'IPM.Note*') { $ignored++; continue }
-            $received = $item.ReceivedTime
-            if ($received -lt $cutoff) { $ignored++; continue }
+            $received = Get-ItemDate $item
+            if (-not $received -or $received -lt $cutoff) { $ignored++; continue }
             $subject = Get-SafeName ([string]$item.Subject)
             if (-not $subject) { $subject = 'no-subject' }
             if ($subject.Length -gt $MaxSubjectLength) {
@@ -154,9 +178,16 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
 $namespace = (New-Object -ComObject Outlook.Application).GetNamespace('MAPI')
 $root = $namespace.GetDefaultFolder(6).Parent  # mailbox root, so Sent Items is reachable too
 $folder = if ($FolderPath) { Resolve-FolderPath $root $FolderPath } else { Get-FolderInteractively $root }
-$cutoff = if ($Days -gt 0) { (Get-Date).AddDays(-$Days) } else { [datetime]::MinValue }
+$cutoff = if ($Since -gt [datetime]::MinValue) {
+    $Since
+} elseif ($Days -gt 0) {
+    (Get-Date).AddDays(-$Days)
+} else {
+    [datetime]::MinValue
+}
 $target = Join-Path $Destination (Get-SafeName $folder.Name)
 
-Write-Host "Exporting '$($folder.Name)' to $target" -ForegroundColor Green
+$window = if ($cutoff -eq [datetime]::MinValue) { 'all messages' } else { "from $($cutoff.ToString('yyyy-MM-dd'))" }
+Write-Host "Exporting '$($folder.Name)' ($window) to $target" -ForegroundColor Green
 Export-Folder $folder $target $cutoff
 Write-Host "`nDone. Add this folder to your Xtoo configuration as a WSL path." -ForegroundColor Green

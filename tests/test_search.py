@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from outlook_msg import build as build_msg
 
+from xtoo import mail
 from xtoo.config import Settings, load_settings
 from xtoo.extract import extract_text
 from xtoo.indexer import Indexer
@@ -230,6 +231,22 @@ def test_eml_extraction_and_unreadable_message(library):
     assert "Approved & scheduled." in content and "hidden" not in content
     assert store.search("bob@example.com")["total"] == 1
     assert store.search("", "eml")["total"] == 1
+
+
+def test_received_dates_report_export_coverage(tmp_path):
+    properties = b"\x00" * 32 + struct.pack("<IIQ", 0x0E060040, 6, 133000000000000000)
+    message = tmp_path / "export.msg"
+    message.write_bytes(build_msg({"__properties_version1.0": properties}))
+    assert mail.received(message).strftime("%Y-%m-%d") == "2022-06-18"
+
+    reply = tmp_path / "reply.eml"
+    reply.write_bytes(b"Subject: hi\r\nDate: Wed, 9 Sep 2026 10:14:02 +0100\r\n\r\nbody\r\n")
+    assert mail.received(reply).strftime("%Y-%m-%d") == "2026-09-09"
+
+    undated = tmp_path / "undated.eml"
+    undated.write_bytes(b"Subject: hi\r\n\r\nbody\r\n")
+    assert mail.received(undated) is None
+    assert mail.received(tmp_path / "export.msg") is not None
 
 
 def test_configuration_validation_and_nested_roots(tmp_path):
