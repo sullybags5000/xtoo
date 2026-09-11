@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Settings
-from .extract import SUPPORTED, extract_text
+from .extract import extract_text
 from .store import Store
 
 
@@ -51,6 +51,8 @@ class Indexer:
         if not self._scan_lock.acquire(blocking=False):
             return self.status()
         started = time.monotonic()
+        supported = self.settings.supported_extensions
+        text_extensions = self.settings.text_extensions
         counters = {"indexed": 0, "unchanged": 0, "skipped": 0, "removed": 0}
         errors = []
         error_count = 0
@@ -98,7 +100,7 @@ class Indexer:
                         if self._stop.is_set():
                             break
                         path = Path(current) / name
-                        if path.suffix.lower() not in SUPPORTED or name.startswith("~$"):
+                        if path.suffix.lower() not in supported or name.startswith("~$"):
                             continue
                         key = str(path)
                         if path.is_symlink():
@@ -113,7 +115,9 @@ class Indexer:
                             if old.get(key) == (stat.st_mtime_ns, stat.st_size):
                                 counters["unchanged"] += 1
                                 continue
-                            content = extract_text(path, self.settings.max_text_chars)
+                            content = extract_text(
+                                path, self.settings.max_text_chars, text_extensions
+                            )
                             after = path.stat()
                             if (after.st_mtime_ns, after.st_size) != (
                                 stat.st_mtime_ns,

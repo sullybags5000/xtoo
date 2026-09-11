@@ -15,7 +15,11 @@ encrypted by Xtoo. The CLI sets a restrictive umask and the default index is
 private to the Linux user, but host permissions, backups, and disk encryption
 remain the organization's responsibility. Treat the index and WAL files as work
 data. Xtoo reads source files and does not modify them; it does not execute
-macros or embedded scripts.
+macros or embedded scripts. Script files such as `.ps1`, `.bat`, `.sh`, and
+`.py` are indexed as text only. Scripts and configuration-as-code frequently
+contain hostnames, connection strings, or credentials, and that text is copied
+into the index; exclude those directories or narrow `folders` if the index
+should not hold them.
 
 Before indexing work content, confirm that local indexing and database storage
 are allowed by company policy. No Microsoft, Confluence, or AI credentials are

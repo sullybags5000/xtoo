@@ -17,7 +17,7 @@ flowchart LR
 | `xtoo/cli.py` | `init`, `index`, and `serve` commands; private file permissions |
 | `xtoo/config.py` | TOML loading, validation, XDG paths, nested-root de-duplication |
 | `xtoo/indexer.py` | Incremental traversal, extraction, stale/deleted-file handling |
-| `xtoo/extract.py` | Text extraction for supported formats; no macro/script execution |
+| `xtoo/extract.py` | Extension groups and text extraction; scripts are read, never executed |
 | `xtoo/store.py` | SQLite schema, FTS5 index, searches, previews, metadata |
 | `xtoo/web.py` | Local API, static UI, host/CSP/security headers |
 | `xtoo/static/` | Search UI, filters, preview, refresh, responsive layout |
