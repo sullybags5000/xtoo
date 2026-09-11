@@ -10,9 +10,10 @@ not a complete replacement for X1 or an enterprise deployment.
 
 ## Run on your work laptop
 
-Use Python 3.11 or newer inside WSL. Keep the checkout and virtual environment
+Use Python 3.10 or newer inside WSL. Keep the checkout and virtual environment
 under your Linux home directory, even when documents live on the Windows drive.
-On Ubuntu 24.04, Python 3.12 is available from the standard packages:
+Ubuntu 22.04 (Python 3.10) and Ubuntu 24.04 (Python 3.12) are supported using
+their standard packages:
 
 ```bash
 sudo apt update
@@ -25,7 +26,7 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-Use an organization-approved Python 3.11+ installation if your WSL distribution
+Use an organization-approved Python 3.10+ installation if your WSL distribution
 ships an older version. Cloning this private repository requires GitHub access;
 HTTPS is also available: `https://github.com/sullybags5000/xtoo.git`.
 
