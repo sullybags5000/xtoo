@@ -7,6 +7,8 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib
 
+from .extract import DOCUMENT_EXTENSIONS, MARKUP_EXTENSIONS, SCRIPT_EXTENSIONS, TEXT_EXTENSIONS
+
 
 def config_path() -> Path:
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "xtoo/config.toml"
@@ -31,13 +33,38 @@ class Settings:
         "AppData",
         "$Recycle.Bin",
         "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        "site-packages",
+        ".terraform",
+        ".idea",
+        ".vs",
     )
+    extra_text_extensions: tuple[str, ...] = ()
+
+    @property
+    def text_extensions(self) -> frozenset[str]:
+        """Extensions decoded as plain text, including scripts and user additions."""
+        return frozenset(TEXT_EXTENSIONS | SCRIPT_EXTENSIONS | set(self.extra_text_extensions))
+
+    @property
+    def supported_extensions(self) -> frozenset[str]:
+        return self.text_extensions | MARKUP_EXTENSIONS | DOCUMENT_EXTENSIONS
 
 
 def load_settings(path: Path) -> Settings:
     with path.open("rb") as handle:
         raw = tomllib.load(handle)
-    allowed = {"folders", "data_dir", "interval_seconds", "max_file_mb", "excluded_dirs"}
+    allowed = {
+        "folders",
+        "data_dir",
+        "interval_seconds",
+        "max_file_mb",
+        "excluded_dirs",
+        "extra_text_extensions",
+    }
     if unknown := raw.keys() - allowed:
         raise ValueError(f"Unknown configuration options: {', '.join(sorted(unknown))}")
     folders = raw.get("folders", [])
@@ -59,6 +86,14 @@ def load_settings(path: Path) -> Settings:
     excludes = raw.get("excluded_dirs", list(Settings.excluded_dirs))
     if not isinstance(excludes, list) or not all(isinstance(s, str) for s in excludes):
         raise ValueError("excluded_dirs must be a list of directory names.")
+    extras = raw.get("extra_text_extensions", [])
+    if not isinstance(extras, list) or not all(isinstance(s, str) and s.strip() for s in extras):
+        raise ValueError("extra_text_extensions must be a list of extensions such as '.psm1'.")
+    extras = tuple(dict.fromkeys("." + s.strip().lower().lstrip(".") for s in extras))
+    if invalid := [s for s in extras if s in DOCUMENT_EXTENSIONS | MARKUP_EXTENSIONS]:
+        raise ValueError(
+            f"These extensions already have a dedicated parser: {', '.join(sorted(invalid))}."
+        )
     if "data_dir" in raw and (not isinstance(raw["data_dir"], str) or not raw["data_dir"].strip()):
         raise ValueError("data_dir must be a nonempty path string.")
     return Settings(
@@ -67,4 +102,5 @@ def load_settings(path: Path) -> Settings:
         interval_seconds=raw.get("interval_seconds", 300),
         max_file_mb=raw.get("max_file_mb", 25),
         excluded_dirs=tuple(excludes),
+        extra_text_extensions=extras,
     )

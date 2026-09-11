@@ -5,7 +5,45 @@ from pathlib import Path
 from zipfile import ZipFile
 
 TEXT_EXTENSIONS = {".txt", ".md", ".rst", ".csv", ".tsv", ".json", ".xml", ".yaml", ".yml", ".log"}
-SUPPORTED = TEXT_EXTENSIONS | {".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx"}
+# Scripts and configuration-as-code are read as plain text and never executed.
+SCRIPT_EXTENSIONS = {
+    ".ps1",
+    ".psm1",
+    ".psd1",
+    ".bat",
+    ".cmd",
+    ".vbs",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".ksh",
+    ".fish",
+    ".awk",
+    ".py",
+    ".pyw",
+    ".pl",
+    ".pm",
+    ".rb",
+    ".lua",
+    ".php",
+    ".r",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".sql",
+    ".mk",
+    ".tf",
+    ".ini",
+    ".cfg",
+    ".conf",
+    ".toml",
+    ".properties",
+}
+MARKUP_EXTENSIONS = {".html", ".htm"}
+# Formats that need a parser and must never be decoded as text.
+DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx"}
+SUPPORTED = TEXT_EXTENSIONS | SCRIPT_EXTENSIONS | MARKUP_EXTENSIONS | DOCUMENT_EXTENSIONS
 
 
 class HTMLText(HTMLParser):
@@ -29,15 +67,26 @@ class HTMLText(HTMLParser):
             self.parts.append(data)
 
 
-def chunks(path: Path):
+def decode(data: bytes) -> str:
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # Windows scripts are frequently saved in the legacy ANSI code page.
+        return data.decode("cp1252", errors="replace")
+
+
+def chunks(path: Path, text_extensions: frozenset | None = None):
     suffix = path.suffix.lower()
-    if suffix in TEXT_EXTENSIONS | {".html", ".htm"}:
-        data = path.read_bytes()
-        text = data.decode(
-            "utf-16" if data.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig",
-            errors="replace",
-        )
-        if suffix in {".html", ".htm"}:
+    if text_extensions is None:
+        text_extensions = frozenset(TEXT_EXTENSIONS | SCRIPT_EXTENSIONS)
+    # Parser-backed formats win over any caller-supplied text extension list.
+    if suffix not in DOCUMENT_EXTENSIONS and (
+        suffix in text_extensions or suffix in MARKUP_EXTENSIONS
+    ):
+        text = decode(path.read_bytes())
+        if suffix in MARKUP_EXTENSIONS:
             parser = HTMLText()
             parser.feed(text)
             text = "".join(parser.parts)
@@ -90,10 +139,10 @@ def chunks(path: Path):
             raise ValueError(f"Unsupported format: {suffix}")
 
 
-def extract_text(path: Path, limit: int) -> str:
+def extract_text(path: Path, limit: int, text_extensions: frozenset | None = None) -> str:
     parts = []
     remaining = limit
-    iterator = chunks(path)
+    iterator = chunks(path, text_extensions)
     try:
         for part in iterator:
             part = part.replace("\x00", "")[:remaining]

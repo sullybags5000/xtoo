@@ -10,4 +10,12 @@ folders = [
 # Omit data_dir to use ~/.local/share/xtoo (or $XDG_DATA_HOME/xtoo).
 interval_seconds = 300
 max_file_mb = 25
-excluded_dirs = [".git", ".venv", "venv", "node_modules", "AppData", "$Recycle.Bin", "__pycache__"]
+excluded_dirs = [
+  ".git", ".venv", "venv", "node_modules", "AppData", "$Recycle.Bin", "__pycache__",
+  ".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", "site-packages", ".terraform",
+  ".idea", ".vs",
+]
+
+# Scripts (.ps1, .bat, .cmd, .sh, .py, .sql, and similar) are indexed as text by
+# default. List extra plain-text extensions here; they are read, never executed.
+# extra_text_extensions = [".go", ".java", ".psrc"]

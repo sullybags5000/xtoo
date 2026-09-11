@@ -9,8 +9,10 @@ xtoo serve
 Open `http://localhost:8765`. The first scan starts automatically. Every search
 word must match; partial words match the start of indexed words. Filter by file
 extension, select a result for a text preview, or use **Refresh index** for an
-immediate scan. Press `/` to focus search. The status line reports progress,
-counts, skipped files, and indexing issues.
+immediate scan. Documents and scripts share one index, so the **All file types**
+filter can be narrowed to `PS1`, `SH`, `PY`, or any other indexed extension.
+Press `/` to focus search. The status line reports progress, counts, skipped
+files, and indexing issues.
 
 | Command | Behavior |
 | --- | --- |
