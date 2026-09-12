@@ -94,7 +94,9 @@ function Resolve-FolderPath($root, [string]$path) {
 
 function Get-SafeName([string]$name) {
     foreach ($char in [System.IO.Path]::GetInvalidFileNameChars()) {
-        $name = $name.Replace($char, '')
+        # [string] casts pick Replace(string, string); a bare [char] binds an overload
+        # that cannot take an empty replacement.
+        $name = $name.Replace([string]$char, '')
     }
     return $name.Trim()
 }
@@ -112,8 +114,11 @@ function Get-EntryTag([string]$entryId) {
 
 function Get-ItemDate($item) {
     # Sent Items and drafts may carry no ReceivedTime, and unsent mail reports year 4501.
-    foreach ($name in 'ReceivedTime', 'SentOn', 'CreationTime') {
-        try { $value = $item.$name } catch { continue }
+    $values = @()
+    try { $values += $item.ReceivedTime } catch { }
+    try { $values += $item.SentOn } catch { }
+    try { $values += $item.CreationTime } catch { }
+    foreach ($value in $values) {
         if ($value -is [datetime] -and $value.Year -ge 1900 -and $value.Year -le 2400) {
             return $value
         }
@@ -165,8 +170,8 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
             Write-Warning "Could not export a message in '$($folder.Name)': $($_.Exception.Message)"
         }
     }
-    Write-Host ("{0,-30} exported {1}, already present {2}, skipped {3}, failed {4}" -f
-        $folder.Name, $exported, $present, $ignored, $failed) -ForegroundColor Cyan
+    $summary = '{0,-30} exported {1}, already present {2}, skipped {3}, failed {4}'
+    Write-Host ($summary -f $folder.Name, $exported, $present, $ignored, $failed) -ForegroundColor Cyan
 
     if ($IncludeSubfolders) {
         foreach ($child in $folder.Folders) {
