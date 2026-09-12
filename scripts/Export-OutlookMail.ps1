@@ -145,6 +145,7 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
     }
 
     $exported = 0; $present = 0; $ignored = 0; $failed = 0
+    Write-Host "Scanning $($folder.Name)..." -ForegroundColor DarkGray
     foreach ($item in $items) {
         try {
             if ($item.MessageClass -notlike 'IPM.Note*') { $ignored++; continue }
@@ -165,6 +166,10 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
             if (Test-Path -LiteralPath $file) { $present++; continue }
             $item.SaveAs($file, 9)  # 9 = olMSGUnicode, which preserves non-ASCII text
             $exported++
+            # A large folder takes hours, so report progress rather than going silent.
+            if ($exported % 500 -eq 0) {
+                Write-Host "  $($folder.Name): $exported exported" -ForegroundColor DarkGray
+            }
         } catch {
             $failed++
             Write-Warning "Could not export a message in '$($folder.Name)': $($_.Exception.Message)"
