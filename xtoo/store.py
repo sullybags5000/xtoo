@@ -32,6 +32,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
 # index built by an earlier version.
 INDEXES = """
 CREATE INDEX IF NOT EXISTS documents_thread ON documents(thread) WHERE thread <> '';
+CREATE INDEX IF NOT EXISTS documents_recent ON documents(document_ns DESC, id DESC);
 CREATE INDEX IF NOT EXISTS entities_name ON entities(name);
 CREATE TRIGGER IF NOT EXISTS documents_insert AFTER INSERT ON documents BEGIN
     INSERT INTO search_index(rowid, title, content) VALUES (new.id, new.title, new.content);
@@ -56,6 +57,9 @@ END;
 DATE_COLUMN = "CASE WHEN d.document_ns > 0 THEN d.document_ns ELSE d.modified_ns END"
 # Ranking scaffolding that callers should never see.
 INTERNAL = {"score", "thread_key", "position"}
+# Grouping reads a bounded window of the best matches. Collapsing every match would
+# mean a window function over the whole index on each keystroke.
+CANDIDATES = 2000
 COLUMNS = f"d.id, d.title, d.path, d.kind, d.size, d.thread, {DATE_COLUMN} AS document_ns"
 
 
@@ -193,21 +197,32 @@ class Store:
                 )
             ]
 
-    def by_ids(self, ids):
-        """Documents in the order given, for rankings produced outside SQL."""
+    def hydrate(self, db, ids, expression=""):
+        """Full rows for a page of ids, in order. Snippets cost several times what
+        ranking does, so they are computed here and not across every candidate."""
         if not ids:
             return []
         marks = ",".join("?" * len(ids))
-        with self.connect() as db:
-            found = {
-                row["id"]: shaped(row, 1)
-                for row in db.execute(
-                    f"SELECT {COLUMNS}, substr(d.content, 1, 240) AS snippet "
-                    f"FROM documents d WHERE d.id IN ({marks})",
-                    tuple(ids),
-                )
-            }
+        if expression:
+            rows = db.execute(
+                f"SELECT {COLUMNS}, snippet(search_index, 1, '', '', ' … ', 36) AS snippet "
+                f"FROM documents d JOIN search_index ON search_index.rowid = d.id "
+                f"WHERE search_index MATCH ? AND d.id IN ({marks})",
+                (expression, *ids),
+            )
+        else:
+            rows = db.execute(
+                f"SELECT {COLUMNS}, substr(d.content, 1, 240) AS snippet "
+                f"FROM documents d WHERE d.id IN ({marks})",
+                tuple(ids),
+            )
+        found = {row["id"]: shaped(row, 1) for row in rows}
         return [found[document_id] for document_id in ids if document_id in found]
+
+    def by_ids(self, ids):
+        """Documents in the order given, for rankings produced outside SQL."""
+        with self.connect() as db:
+            return self.hydrate(db, ids)
 
     def kinds_of(self, ids, kind):
         """Which of the given ids are of one file type."""
@@ -227,7 +242,7 @@ class Store:
         # Treat user input as literal words, never as FTS operators or SQL.
         terms = re.findall(r"[^\W_]+", query, re.UNICODE)[:32]
         expression = " AND ".join('"' + term + '"*' for term in terms)
-        empty = {"items": [], "total": 0, "offset": offset, "limit": limit}
+        empty = {"items": [], "total": 0, "matched": 0, "offset": offset, "limit": limit}
         params = []
         conditions = []
         source = "documents d"
@@ -248,7 +263,8 @@ class Store:
             conditions.append("d.id IN (SELECT document_id FROM entities WHERE name = ?)")
             params.append(entity)
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
-        order = "score, document_ns DESC, id DESC"
+        # A constant score would stop the date index being used when browsing.
+        order = "score, document_ns DESC, id DESC" if expression else "document_ns DESC, id DESC"
         selection = f"{COLUMNS}, {score} AS score, {snippet} AS snippet"
         with self.connect() as db:
             if not collapse:
@@ -258,22 +274,40 @@ class Store:
                     (*params, limit, offset),
                 ).fetchall()
                 items = [shaped(row, 1) for row in rows]
+                matched = total
             else:
                 # Documents outside a conversation each stand alone.
                 key = "CASE WHEN d.thread = '' THEN 'id:' || d.id ELSE d.thread END"
-                inner = f"SELECT {selection}, {key} AS thread_key FROM {source}{where}"
-                ranked = (
+                candidates = (
+                    f"SELECT d.id AS id, {key} AS thread_key, {score} AS score, "
+                    f"{DATE_COLUMN} AS document_ns FROM {source}{where} "
+                    f"ORDER BY {order} LIMIT {CANDIDATES}"
+                )
+                rows = db.execute(
+                    f"WITH ranked AS MATERIALIZED ({candidates}), groups AS ("
                     f"SELECT *, ROW_NUMBER() OVER (PARTITION BY thread_key ORDER BY {order}) "
                     f"AS position, COUNT(*) OVER (PARTITION BY thread_key) AS thread_size "
-                    f"FROM ({inner})"
-                )
-                total = db.execute(
-                    f"SELECT COUNT(*) FROM (SELECT DISTINCT thread_key FROM ({inner}))", params
-                ).fetchone()[0]
-                rows = db.execute(
-                    f"SELECT * FROM ({ranked}) WHERE position = 1 "
-                    f"ORDER BY {order} LIMIT ? OFFSET ?",
+                    f"FROM ranked) SELECT id, thread_size, "
+                    f"(SELECT COUNT(DISTINCT thread_key) FROM ranked) AS total "
+                    f"FROM groups WHERE position = 1 ORDER BY {order} LIMIT ? OFFSET ?",
                     (*params, limit, offset),
                 ).fetchall()
-                items = [shaped(row) for row in rows]
-            return {"items": items, "total": total, "offset": offset, "limit": limit}
+                matched = db.execute(f"SELECT COUNT(*) FROM {source}{where}", params).fetchone()[0]
+                total = (
+                    rows[0]["total"]
+                    if rows
+                    else db.execute(
+                        f"SELECT COUNT(DISTINCT thread_key) FROM ({candidates})", params
+                    ).fetchone()[0]
+                )
+                sizes = {row["id"]: row["thread_size"] for row in rows}
+                items = self.hydrate(db, list(sizes), expression)
+                for item in items:
+                    item["thread_size"] = sizes[item["id"]]
+            return {
+                "items": items,
+                "total": total,
+                "matched": matched,
+                "offset": offset,
+                "limit": limit,
+            }
