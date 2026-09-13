@@ -3,6 +3,9 @@
 | Symptom | Likely cause | Verification | Resolution |
 | --- | --- | --- | --- |
 | Package requires a different Python | Python is older than 3.10 | `python --version` | Use Python 3.10+ and recreate `.venv`. |
+| Server gone after closing the terminal | It was started in the foreground | `pgrep -fa "xtoo serve"` | Start it with `nohup ~/xtoo/.venv/bin/xtoo serve >>~/xtoo.log 2>&1 &`. See [Running Xtoo](deployment.md). |
+| Nothing running after a Windows restart | Nothing starts Xtoo automatically | `curl -s localhost:8765/api/status` | Start it again, or add the guarded line to `~/.bashrc` in [Running Xtoo](deployment.md). |
+| `xtoo: command not found` | The virtual environment is not active, or leaving it restored an older `PATH` | `which -a xtoo; echo "$PATH"` | Use the full path `~/xtoo/.venv/bin/xtoo`, or `source ~/xtoo/.venv/bin/activate`. |
 | `CERTIFICATE_VERIFY_FAILED` from `xtoo embed` | A managed network inspects TLS with its own root certificate | `python -c "import huggingface_hub as h; h.hf_hub_download('minishlab/potion-base-8M','config.json')"` | Set `SSL_CERT_FILE` and `REQUESTS_CA_BUNDLE` to your organisation's root certificate, or use `xtoo embed --model /path/to/local/model`. See [Semantic search](semantic.md). |
 | Meaning toggle missing from the search bar | Vectors are not built, or the `vectors` extra is not installed | `curl -s localhost:8765/api/status \| grep semantic` | `pip install -e '.[vectors]'` then `xtoo embed`. |
 | Mail sorted by export date, no links shown | An index built before enrichment | `xtoo search --limit 3` and check the dates | Run `xtoo migrate` once. |

@@ -6,8 +6,12 @@ interface, a terminal command, and an optional assistant interface.
 
 ```bash
 xtoo init --folder /mnt/c/Users/YOUR_WINDOWS_USER/Documents
-xtoo serve        # http://localhost:8765
+xtoo serve                                    # http://localhost:8765
+nohup ~/xtoo/.venv/bin/xtoo serve &           # or leave it running in the background
 ```
+
+Nothing starts it automatically; see [Running Xtoo](docs/deployment.md) for
+keeping it up after a terminal closes or Windows restarts.
 
 ## What it indexes
 
@@ -64,7 +68,7 @@ and an unreachable folder keeps its cached results rather than emptying them.
 | Meaning-aware search | [Semantic search](docs/semantic.md) |
 | Local development | [Development](docs/development.md) |
 | Test suite and checks | [Testing](docs/testing.md) |
-| Local deployment and upgrades | [Deployment](docs/deployment.md) |
+| Running it, restarting, staying current | [Running Xtoo](docs/deployment.md) |
 | Common failures | [Troubleshooting](docs/troubleshooting.md) |
 | Data protection and localhost boundary | [Security](docs/security.md) |
 | Contributions | [Contributing](docs/contributing.md) |
