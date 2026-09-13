@@ -19,7 +19,16 @@ def main():
     )
     serve = commands.add_parser("serve", help="Start local web UI and background indexing")
     serve.add_argument("--port", type=int, default=8765)
-    commands.add_parser("index", help="Scan configured folders once, without starting the web UI")
+    scan = commands.add_parser("index", help="Scan configured folders once, without the web UI")
+    scan.add_argument(
+        "--quick",
+        action="store_true",
+        help="Trust folders whose timestamp has not moved; finds new and deleted files only",
+    )
+    catch_up = commands.add_parser("sync", help="Run the configured export, scan, then embed")
+    catch_up.add_argument("--quick", action="store_true", help="Quick scan rather than full")
+    save = commands.add_parser("backup", help="Write a consistent copy of the index")
+    save.add_argument("path", type=Path, help="File to create; it must not already exist")
     find = commands.add_parser("search", help="Search the index from the terminal")
     find.add_argument("query", nargs="*", help="Words to find; every word must match")
     find.add_argument("--kind", default="", help="Restrict to one file type, such as msg or pdf")
@@ -31,6 +40,11 @@ def main():
     find.add_argument("--json", action="store_true", help="Print results as JSON")
     find.add_argument(
         "--meaning", action="store_true", help="Combine full-text with semantic search"
+    )
+    find.add_argument("--since", default="", help="Only documents dated on or after YYYY-MM-DD")
+    find.add_argument("--until", default="", help="Only documents dated on or before YYYY-MM-DD")
+    find.add_argument(
+        "--people", action="store_true", help="Exclude mail sent by automated systems"
     )
     commands.add_parser("migrate", help="Backfill dates, conversations and entities in the index")
     embed = commands.add_parser("embed", help="Build semantic vectors for the index")
@@ -66,9 +80,8 @@ def main():
             from .query import run as answer
             from .store import Store
 
-            found = answer(
-                Store(settings.data_dir),
-                Ask(
+            try:
+                asked = Ask(
                     text=" ".join(args.query),
                     kind=args.kind,
                     entity=args.entity,
@@ -78,8 +91,10 @@ def main():
                     meaning=args.meaning,
                     people_only=args.people,
                     limit=max(1, min(args.limit, 100)),
-                ),
-            )
+                )
+            except ValueError as error:
+                parser.exit(2, f"{error}\n")
+            found = answer(Store(settings.data_dir), asked)
             if args.json:
                 print(json.dumps(found, indent=2))
                 return
@@ -118,13 +133,49 @@ def main():
         if args.command == "mcp":
             from .mcp_server import serve
 
-            serve(settings.data_dir)
+            serve(settings)
+            return
+        if args.command == "backup":
+            from .store import Store
+
+            if args.path.exists():
+                parser.exit(2, f"{args.path} already exists; choose a new file.\n")
+            args.path.parent.mkdir(parents=True, exist_ok=True)
+            with Store(settings.data_dir).connect() as db:
+                db.execute("VACUUM INTO ?", (str(args.path),))
+            print(f"Wrote {args.path} ({args.path.stat().st_size / 1e9:.2f} GB)")
+            return
+        if args.command == "sync":
+            import subprocess
+
+            from .indexer import Indexer
+            from .store import Store
+            from .vectors import build as embed
+            from .vectors import ready as vectors_ready
+
+            store = Store(settings.data_dir)
+            if settings.sync_command:
+                print(f"Running {settings.sync_command}")
+                completed = subprocess.run(settings.sync_command, shell=True)
+                if completed.returncode:
+                    print(f"Export exited {completed.returncode}; indexing what is there anyway.")
+            result = Indexer(settings, store).scan(full=not args.quick)
+            print(
+                f"Scanned: {result['indexed']:,} indexed, {result['unchanged']:,} unchanged, "
+                f"{result['removed']:,} removed, {result['error_count']:,} errors"
+            )
+            # Only extend an index that already has vectors; never start that unasked.
+            if vectors_ready(store):
+                built = embed(store)
+                print(f"Embedded {built['documents']:,} new documents")
+            if result["error_count"]:
+                raise SystemExit(1)
             return
         if args.command == "index":
             from .indexer import Indexer
             from .store import Store
 
-            result = Indexer(settings, Store(settings.data_dir)).scan()
+            result = Indexer(settings, Store(settings.data_dir)).scan(full=not args.quick)
             print(json.dumps(result, indent=2))
             if result["error_count"]:
                 raise SystemExit(1)

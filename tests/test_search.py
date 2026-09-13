@@ -85,6 +85,35 @@ def test_exclusions_symlinks_and_size_limit(library):
     assert store.search()["total"] == 0
 
 
+def test_quick_scan_trusts_folders_whose_timestamp_has_not_moved(library):
+    root, _, store, indexer = library
+    (root / "notes").mkdir()
+    (root / "notes/one.txt").write_text("first")
+    assert indexer.scan()["indexed"] == 1
+
+    # A quick scan does not re-examine a folder that has not changed.
+    quick = indexer.scan(full=False)
+    assert quick["indexed"] == 0 and quick["unchanged"] == 1
+    assert store.search("first")["total"] == 1
+
+    # A new file changes the folder, so a quick scan still finds it.
+    (root / "notes/two.txt").write_text("second")
+    assert indexer.scan(full=False)["indexed"] == 1
+    assert store.search("second")["total"] == 1
+
+    # A deletion changes the folder too, so nothing is left behind.
+    (root / "notes/one.txt").unlink()
+    assert indexer.scan(full=False)["removed"] == 1
+    assert store.search("first")["total"] == 0
+
+    # Editing a file does not change its folder, so only a full scan sees it.
+    (root / "notes/two.txt").write_text("rewritten entirely")
+    assert indexer.scan(full=False)["indexed"] == 0
+    assert store.search("rewritten")["total"] == 0
+    assert indexer.scan(full=True)["indexed"] == 1
+    assert store.search("rewritten")["total"] == 1
+
+
 def test_missing_root_keeps_cache_and_removed_source_purges(library):
     root, settings, store, indexer = library
     (root / "note.txt").write_text("cached")

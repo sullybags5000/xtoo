@@ -32,6 +32,9 @@ class Settings:
     max_file_mb: int = 25
     max_text_chars: int = 1_000_000
     attachment_chars: int = 0
+    full_scan_hours: int = 24
+    sync_command: str = ""
+    assistant_excludes: tuple[str, ...] = ()
     excluded_dirs: tuple[str, ...] = (
         ".git",
         ".venv",
@@ -72,6 +75,9 @@ def load_settings(path: Path) -> Settings:
         "excluded_dirs",
         "extra_text_extensions",
         "attachment_chars",
+        "full_scan_hours",
+        "sync_command",
+        "assistant_excludes",
     }
     if unknown := raw.keys() - allowed:
         raise ValueError(f"Unknown configuration options: {', '.join(sorted(unknown))}")
@@ -91,6 +97,7 @@ def load_settings(path: Path) -> Settings:
         ("interval_seconds", 300, 10),
         ("max_file_mb", 25, 1),
         ("attachment_chars", 0, 0),
+        ("full_scan_hours", 24, 1),
     ):
         value = raw.get(key, default)
         if type(value) is not int or value < minimum:
@@ -106,6 +113,11 @@ def load_settings(path: Path) -> Settings:
         raise ValueError(
             f"These extensions already have a dedicated parser: {', '.join(sorted(invalid))}."
         )
+    if not isinstance(raw.get("sync_command", ""), str):
+        raise ValueError("sync_command must be a command string.")
+    hidden = raw.get("assistant_excludes", [])
+    if not isinstance(hidden, list) or not all(isinstance(s, str) and s.strip() for s in hidden):
+        raise ValueError("assistant_excludes must be a list of path fragments.")
     if "data_dir" in raw and (not isinstance(raw["data_dir"], str) or not raw["data_dir"].strip()):
         raise ValueError("data_dir must be a nonempty path string.")
     return Settings(
@@ -116,4 +128,7 @@ def load_settings(path: Path) -> Settings:
         excluded_dirs=tuple(excludes),
         extra_text_extensions=extras,
         attachment_chars=raw.get("attachment_chars", 0),
+        full_scan_hours=raw.get("full_scan_hours", 24),
+        sync_command=raw.get("sync_command", ""),
+        assistant_excludes=tuple(fragment.strip() for fragment in hidden),
     )

@@ -8,6 +8,8 @@ pasting the text yourself.
 
 from datetime import datetime, timezone
 
+from .query import Query as Ask
+from .query import moment, run
 from .store import Store
 
 INSTRUCTIONS = """Search the user's own indexed documents, scripts and exported email.
@@ -41,15 +43,30 @@ def result(item: dict) -> dict:
     return trimmed
 
 
-def search(store: Store, query: str, kind: str = "", limit: int = 10, collapse: bool = True):
-    from . import vectors
-
-    limit = max(1, min(limit, 50))
-    if query.strip() and vectors.ready(store):
-        # Meaning and keywords combined, so a paraphrase still finds the document.
-        found = vectors.search(store, query, kind=kind, limit=limit, collapse=collapse)
-    else:
-        found = store.search(query, kind=kind, limit=limit, collapse=collapse)
+def search(
+    store: Store,
+    query: str,
+    kind: str = "",
+    limit: int = 10,
+    collapse: bool = True,
+    since: str = "",
+    until: str = "",
+    exclude=(),
+):
+    # Meaning is asked for by default, and declined for an exact identifier.
+    found = run(
+        store,
+        Ask(
+            text=query,
+            kind=kind,
+            since=moment(since),
+            until=moment(until, end_of_day=True),
+            collapse=collapse,
+            meaning=True,
+            exclude=tuple(exclude),
+            limit=max(1, min(limit, 50)),
+        ),
+    )
     return {"total": found["total"], "results": [result(item) for item in found["items"]]}
 
 
@@ -70,8 +87,11 @@ def read(store: Store, document_id: int, max_characters: int = 4000):
     }
 
 
-def by_entity(store: Store, name: str, limit: int = 20):
-    found = store.search(entity=name, limit=max(1, min(limit, 50)))
+def by_entity(store: Store, name: str, limit: int = 20, exclude=()):
+    found = run(
+        store,
+        Ask(entity=name, collapse=False, exclude=tuple(exclude), limit=max(1, min(limit, 50))),
+    )
     return {"total": found["total"], "results": [result(item) for item in found["items"]]}
 
 
@@ -81,7 +101,7 @@ def names(store: Store, prefix: str):
     }
 
 
-def build(store: Store):
+def build(store: Store, excludes=()):
     from mcp.server.mcpserver import MCPServer
 
     server = MCPServer(name="xtoo", instructions=INSTRUCTIONS)
@@ -92,13 +112,19 @@ def build(store: Store):
             "Every word must match; words match from the start, so 'migr' finds "
             "'migration'. Optionally restrict to one file type with kind, such as 'msg' "
             "for Outlook mail, 'pdf', or 'py'. collapse shows one row per email "
-            "conversation instead of every reply; turn it off to see each message."
+            "conversation instead of every reply; turn it off to see each message. "
+            "since and until are YYYY-MM-DD dates bounding when a document is from."
         )
     )
     def search_documents(
-        query: str, kind: str = "", limit: int = 10, collapse: bool = True
+        query: str,
+        kind: str = "",
+        limit: int = 10,
+        collapse: bool = True,
+        since: str = "",
+        until: str = "",
     ) -> dict:
-        return search(store, query, kind, limit, collapse)
+        return search(store, query, kind, limit, collapse, since, until, excludes)
 
     @server.tool(
         description=(
@@ -118,7 +144,7 @@ def build(store: Store):
         )
     )
     def find_by_entity(name: str, limit: int = 20) -> dict:
-        return by_entity(store, name, limit)
+        return by_entity(store, name, limit, excludes)
 
     @server.tool(
         description=(
@@ -133,5 +159,5 @@ def build(store: Store):
     return server
 
 
-def serve(data_dir):
-    build(Store(data_dir)).run("stdio")
+def serve(settings):
+    build(Store(settings.data_dir), settings.assistant_excludes).run("stdio")
