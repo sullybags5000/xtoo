@@ -7,7 +7,7 @@ interface, a terminal command, and an optional assistant interface.
 ```bash
 xtoo init --folder /mnt/c/Users/YOUR_WINDOWS_USER/Documents
 xtoo serve                                    # http://localhost:8765
-nohup ~/xtoo/.venv/bin/xtoo serve &           # or leave it running in the background
+~/xtoo/scripts/xtoo.sh start                  # or leave it running in the background
 ```
 
 Nothing starts it automatically; see [Running Xtoo](docs/deployment.md) for
