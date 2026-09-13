@@ -26,7 +26,8 @@ flowchart LR
 | `xtoo/vectors.py` | Optional local embeddings and combined ranking (`sqlite-vec`) |
 | `xtoo/mcp_server.py` | Optional read-only MCP tools for an assistant |
 | `xtoo/web.py` | Local API, static UI, host/CSP/security headers |
-| `xtoo/static/` | Search UI, filters, preview, refresh, responsive layout |
+| `xtoo/static/` | Search UI, filters, grouping, entity links, preview, refresh |
+| `scripts/` | Operational helpers: run the server, export mail, survey and estimate |
 
 `xtoo serve` starts Uvicorn on `127.0.0.1:8765` and a background scan thread.
 The index is `~/.local/share/xtoo/index.sqlite3` by default, with SQLite WAL

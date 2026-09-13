@@ -28,6 +28,8 @@
   `--rebuild` to start again.
 - Added `scripts/mail_estimate.py`, which projects indexing time and index growth
   from a sample before committing to a long run.
+- Added `scripts/xtoo.sh` to start, stop, check and restart a background server,
+  tracking it by process id so stopping Xtoo cannot stop anything else.
 - Grouped search and vector building were rewritten for large indexes: grouping is
   about ten times faster, and embedding twenty thousand documents fell from over
   fifteen minutes to under a minute.
