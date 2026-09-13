@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sqlite3
 import struct
 import subprocess
@@ -396,6 +397,60 @@ def test_api_exposes_conversations_and_entity_links(correspondence):
         assert client.get("/api/entities").json()["items"]  # no prefix browses the busiest
         document = client.get(f"/api/documents/{linked['items'][0]['id']}").json()
         assert {"kind": "ticket", "name": "PROJ-4821"} in document["entities"]
+
+
+def bag_of_words(texts):
+    """A deterministic stand-in for the embedding model: no download, no network."""
+    encoded = []
+    for text in texts:
+        vector = [0.0] * 256
+        for word in set(re.findall(r"\w+", text.lower())):
+            vector[hash(word) % 256] += 1.0
+        scale = sum(value * value for value in vector) ** 0.5 or 1.0
+        encoded.append([value / scale for value in vector])
+    return encoded
+
+
+def test_semantic_vectors_build_resume_and_rank(correspondence):
+    pytest.importorskip("sqlite_vec")
+    from xtoo import vectors
+
+    root, _, store, indexer = correspondence
+    built = vectors.build(store, encode=bag_of_words)
+    assert built["documents"] == 5 and built["chunks"] >= 5
+    assert vectors.build(store, encode=bag_of_words)["documents"] == 0  # resumes, does not redo
+
+    found = vectors.similar(store, "restart vpxd", encode=bag_of_words)
+    script = store.search("workaround")["items"][0]["id"]
+    assert script in found
+
+    fused = vectors.search(store, "vpxd", limit=5, encode=bag_of_words)
+    assert fused["total"] >= 1
+    assert all(item["snippet"] for item in fused["items"])
+
+    # Editing a file makes its vectors stale, and only that document is redone.
+    (root / "fix.sh").write_text("#!/bin/bash\n# replaced entirely\n")
+    indexer.scan()
+    assert vectors.build(store, encode=bag_of_words)["documents"] == 1
+
+    # Deleting a file clears its vectors rather than leaving them to be matched.
+    (root / "fix.sh").unlink()
+    indexer.scan()
+    vectors.build(store, encode=bag_of_words)
+    assert script not in vectors.similar(store, "restart vpxd", encode=bag_of_words)
+
+
+def test_chunking_covers_the_start_of_a_long_document():
+    pytest.importorskip("sqlite_vec")
+    from xtoo import vectors
+
+    assert vectors.pieces("title", "") == ["title"]
+    windows = vectors.pieces("report", "word " * 4000)
+    assert len(windows) == vectors.MAX_CHUNKS
+    assert all(len(window) <= vectors.CHUNK for window in windows)
+    assert windows[0].startswith("report")
+    # Windows overlap, so a phrase on a boundary is not lost.
+    assert windows[0][-vectors.OVERLAP :] in windows[1]
 
 
 def test_configuration_validation_and_nested_roots(tmp_path):

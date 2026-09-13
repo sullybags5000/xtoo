@@ -9,6 +9,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .config import Settings
 from .indexer import Indexer
 from .store import Store
+from .vectors import ready as vectors_ready
 
 
 def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
@@ -56,7 +57,14 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
         limit: int = Query(40, ge=1, le=100),
         entity: str = Query("", max_length=120),
         collapse: bool = Query(False),
+        meaning: bool = Query(False),
     ):
+        if meaning and q.strip() and not entity:
+            from .vectors import available
+            from .vectors import search as fused
+
+            if available():
+                return fused(store, q, kind=kind, offset=offset, limit=limit)
         return store.search(q, kind, offset, limit, entity, collapse)
 
     @app.get("/api/entities")
@@ -81,6 +89,7 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
             "kinds": kinds,
             "folders": [str(p) for p in settings.folders],
             "interval_seconds": settings.interval_seconds,
+            "semantic": vectors_ready(store),
         }
 
     @app.post("/api/index", status_code=202)
