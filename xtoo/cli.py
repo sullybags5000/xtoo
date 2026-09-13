@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import config_path, data_path, load_settings
@@ -19,6 +20,17 @@ def main():
     serve = commands.add_parser("serve", help="Start local web UI and background indexing")
     serve.add_argument("--port", type=int, default=8765)
     commands.add_parser("index", help="Scan configured folders once, without starting the web UI")
+    find = commands.add_parser("search", help="Search the index from the terminal")
+    find.add_argument("query", nargs="*", help="Words to find; every word must match")
+    find.add_argument("--kind", default="", help="Restrict to one file type, such as msg or pdf")
+    find.add_argument(
+        "--entity", default="", help="Documents linked to a ticket, person or address"
+    )
+    find.add_argument("--limit", type=int, default=10)
+    find.add_argument("--expand", action="store_true", help="List every message in a conversation")
+    find.add_argument("--json", action="store_true", help="Print results as JSON")
+    commands.add_parser("migrate", help="Backfill dates, conversations and entities in the index")
+    commands.add_parser("mcp", help="Serve the index to an MCP client over stdio")
     args = parser.parse_args()
     # Index content is private to this Linux user by default, including SQLite sidecars.
     os.umask(0o077)
@@ -36,6 +48,44 @@ def main():
             print(f"Created {args.config}. Run: xtoo serve")
             return
         settings = load_settings(args.config)
+        if args.command == "search":
+            from .store import Store
+
+            found = Store(settings.data_dir).search(
+                " ".join(args.query),
+                kind=args.kind,
+                limit=max(1, min(args.limit, 100)),
+                entity=args.entity,
+                collapse=not args.expand,
+            )
+            if args.json:
+                print(json.dumps(found, indent=2))
+                return
+            print(f"{found['total']} matching documents")
+            for item in found["items"]:
+                when = datetime.fromtimestamp(item["document_ns"] / 1e9, timezone.utc).date()
+                thread = (
+                    f" (+{item['thread_size'] - 1} in conversation)"
+                    if item["thread_size"] > 1
+                    else ""
+                )
+                print(f"\n{when}  [{item['kind']}]  {item['title']}{thread}\n  {item['path']}")
+                if snippet := " ".join((item["snippet"] or "").split()):
+                    print(f"  {snippet[:200]}")
+            return
+        if args.command == "migrate":
+            from .migrate import enrich_documents
+            from .store import Store
+
+            print(
+                f"Enriched {enrich_documents(Store(settings.data_dir), report=print):,} documents."
+            )
+            return
+        if args.command == "mcp":
+            from .mcp_server import serve
+
+            serve(settings.data_dir)
+            return
         if args.command == "index":
             from .indexer import Indexer
             from .store import Store

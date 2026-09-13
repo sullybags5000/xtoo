@@ -5,6 +5,7 @@ const limit = 40;
 let searchSequence = 0;
 let previewSequence = 0;
 let selectedPath = "";
+let entity = "";
 let timer;
 let lastFinished;
 
@@ -89,7 +90,16 @@ async function preview(item, button) {
     $("preview-kind").textContent = doc.kind;
     highlighted($("preview-title"), doc.title);
     $("preview-meta").textContent =
-      `Modified ${date(doc.modified_ns)} · ${Math.max(1, Math.round(doc.size / 1024)).toLocaleString()} KB`;
+      `${doc.document_ns === doc.modified_ns ? "Modified" : "Dated"} ${date(doc.document_ns)} · ${Math.max(1, Math.round(doc.size / 1024)).toLocaleString()} KB`;
+    $("preview-entities").replaceChildren(
+      ...(doc.entities || []).map((link) => {
+        const chip = node("button", "entity");
+        chip.type = "button";
+        chip.append(node("span", "entity-kind", link.kind), link.name);
+        chip.addEventListener("click", () => filterByEntity(link.name));
+        return chip;
+      }),
+    );
     $("preview-path").textContent = doc.path;
     $("copy-path").textContent = "Copy path";
     $("preview-warning").textContent = doc.preview_truncated
@@ -110,9 +120,13 @@ async function search() {
   const params = new URLSearchParams({
     q: $("query").value,
     kind: $("kind").value,
+    entity,
+    collapse: $("collapse").checked,
     offset,
     limit,
   });
+  $("entity-filter").hidden = !entity;
+  $("entity-name").textContent = entity;
   clearPreview();
   $("result-count").textContent = "Searching…";
   try {
@@ -130,6 +144,8 @@ async function search() {
       const title = node("span", "result-title");
       highlighted(title, item.title);
       heading.append(node("span", "badge", item.kind), title);
+      if (item.thread_size > 1)
+        heading.append(node("span", "badge", `${item.thread_size} messages`));
       const snippet = node("p", "result-snippet");
       highlighted(
         snippet,
@@ -138,7 +154,7 @@ async function search() {
       button.append(
         heading,
         snippet,
-        node("div", "result-meta", `${date(item.modified_ns)} · ${item.path}`),
+        node("div", "result-meta", `${date(item.document_ns)} · ${item.path}`),
       );
       button.addEventListener("click", () => preview(item, button));
       $("results").append(button);
@@ -149,7 +165,7 @@ async function search() {
         node(
           "h2",
           "",
-          $("query").value || $("kind").value
+          $("query").value || $("kind").value || entity
             ? "No matching documents"
             : "Your library starts here",
         ),
@@ -158,8 +174,8 @@ async function search() {
         node(
           "p",
           "",
-          $("query").value || $("kind").value
-            ? "Try fewer words or a different file type."
+          $("query").value || $("kind").value || entity
+            ? "Try fewer words, a different file type, or clear the link."
             : "Documents appear as your configured folders are indexed. Check the scan status above for progress or folder errors.",
         ),
       );
@@ -239,10 +255,21 @@ $("query").addEventListener("input", () => {
   offset = 0;
   timer = setTimeout(search, 180);
 });
+function filterByEntity(name) {
+  entity = name;
+  offset = 0;
+  search();
+}
+
 $("kind").addEventListener("change", () => {
   offset = 0;
   search();
 });
+$("collapse").addEventListener("change", () => {
+  offset = 0;
+  search();
+});
+$("entity-clear").addEventListener("click", () => filterByEntity(""));
 $("previous").addEventListener("click", () => {
   offset = Math.max(0, offset - limit);
   search();

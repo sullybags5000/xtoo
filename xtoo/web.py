@@ -54,8 +54,14 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
         kind: str = Query("", max_length=12),
         offset: int = Query(0, ge=0),
         limit: int = Query(40, ge=1, le=100),
+        entity: str = Query("", max_length=120),
+        collapse: bool = Query(False),
     ):
-        return store.search(q, kind, offset, limit)
+        return store.search(q, kind, offset, limit, entity, collapse)
+
+    @app.get("/api/entities")
+    def entities(prefix: str = Query("", max_length=120)):
+        return {"items": store.entities(prefix)}
 
     @app.get("/api/documents/{document_id}")
     def document(document_id: int):
