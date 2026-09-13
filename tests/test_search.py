@@ -17,6 +17,7 @@ from xtoo.enrich import entities, thread_key
 from xtoo.extract import extract_text
 from xtoo.indexer import Indexer
 from xtoo.migrate import enrich_documents
+from xtoo.query import Query as Ask
 from xtoo.store import Store
 from xtoo.web import create_app
 
@@ -254,15 +255,24 @@ def test_received_dates_report_export_coverage(tmp_path):
     assert mail.received(tmp_path / "export.msg") is not None
 
 
-def conversation(root, name, subject, body, when, to="Ford, Alex; Lee, Sam"):
+def conversation(
+    root,
+    name,
+    subject,
+    body,
+    when,
+    to="Ford, Alex; Lee, Sam",
+    sender="Jane Doe",
+    address="jane.doe@example.com",
+):
     epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
     ticks = int((when - epoch).total_seconds() * 10_000_000)
     (root / name).write_bytes(
         build_msg(
             {
                 "__substg1.0_0037001F": utf16(subject),
-                "__substg1.0_0C1A001F": utf16("Jane Doe"),
-                "__substg1.0_5D01001F": utf16("jane.doe@example.com"),
+                "__substg1.0_0C1A001F": utf16(sender),
+                "__substg1.0_5D01001F": utf16(address),
                 "__substg1.0_0E04001F": utf16(to),
                 "__substg1.0_1000001F": utf16(body),
                 "__properties_version1.0": b"\x00" * 32 + struct.pack("<IIQ", 0x0E060040, 6, ticks),
@@ -424,7 +434,7 @@ def test_semantic_vectors_build_resume_and_rank(correspondence):
     script = store.search("workaround")["items"][0]["id"]
     assert script in found
 
-    fused = vectors.search(store, "vpxd", limit=5, encode=bag_of_words)
+    fused = vectors.search(store, Ask(text="vpxd", limit=5, collapse=False), encode=bag_of_words)
     assert fused["total"] >= 1
     assert all(item["snippet"] for item in fused["items"])
 
@@ -464,13 +474,87 @@ def test_semantic_results_group_conversations_too(correspondence):
 
     _, _, store, _ = correspondence
     vectors.build(store, encode=bag_of_words)
-    expanded = vectors.search(store, "upgrade", limit=20, encode=bag_of_words)
-    grouped = vectors.search(store, "upgrade", limit=20, collapse=True, encode=bag_of_words)
+    expanded = vectors.search(
+        store, Ask(text="upgrade", limit=20, collapse=False), encode=bag_of_words
+    )
+    grouped = vectors.search(
+        store, Ask(text="upgrade", limit=20, collapse=True), encode=bag_of_words
+    )
     assert grouped["total"] < expanded["total"]
     assert grouped["matched"] == expanded["total"]  # the documents behind the groups
     leader = next(item for item in grouped["items"] if item["thread_size"] > 1)
     assert leader["thread_size"] == 3
     assert sum(item["thread_size"] for item in grouped["items"]) == expanded["total"]
+
+
+@pytest.mark.parametrize("meaning", [False, True])
+def test_every_filter_applies_in_both_search_paths(correspondence, meaning):
+    """The guard against an option working one way of searching and not the other."""
+    pytest.importorskip("sqlite_vec")
+    from xtoo import vectors
+    from xtoo.query import Query, moment, run
+
+    root, _, store, indexer = correspondence
+    conversation(
+        root,
+        "robot.msg",
+        "[tracker] Upgrade job finished",
+        "Automated upgrade notice",
+        datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc),
+        sender="Tracker (Jira)",
+        address="do-not-reply@example.com",
+    )
+    indexer.scan()
+    vectors.build(store, encode=bag_of_words)
+
+    def ask(**options):
+        return run(store, Query(text="upgrade", meaning=meaning, **options), encode=bag_of_words)
+
+    everything = ask(collapse=False)
+    assert everything["total"] > 1
+
+    assert {item["kind"] for item in ask(kind="msg", collapse=False)["items"]} == {"msg"}
+    assert ask(kind="sh", collapse=False)["total"] == 0
+
+    linked = ask(entity="PROJ-4821", collapse=False)
+    assert 0 < linked["total"] < everything["total"]
+
+    dated = ask(since=moment("2026-04-01"), until=moment("2026-04-30", True), collapse=False)
+    assert dated["total"] >= 1
+    for item in dated["items"]:
+        assert moment("2026-04-01") <= item["document_ns"] <= moment("2026-04-30", True)
+
+    people = ask(people_only=True, collapse=False)
+    assert "robot.msg" not in {item["title"] for item in people["items"]}
+    assert "robot.msg" in {item["title"] for item in everything["items"]}
+
+    assert "robot.msg" not in {item["title"] for item in ask(exclude=("robot",))["items"]}
+
+    grouped = ask(collapse=True)
+    assert grouped["total"] < everything["total"]
+    assert grouped["matched"] >= grouped["total"]
+    assert max(item["thread_size"] for item in grouped["items"]) > 1
+
+
+def test_dates_and_exact_queries_are_understood():
+    from xtoo.query import exact, moment
+
+    assert moment("2026-03-02") < moment("2026-03-02", end_of_day=True) < moment("2026-03-03")
+    assert moment("") == 0
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        moment("2 March 2026")
+    # An identifier gains nothing from meaning, so the semantic arm is skipped.
+    assert exact("PROJ-4821") and exact("8.0.300")
+    assert not exact("why did the upgrade fail") and not exact("upgrade")
+
+
+def test_automated_senders_are_recognised():
+    from xtoo.enrich import automated
+
+    for sender in ("Tracker (Jira)", "no-reply@example.com", "notifications@example.com"):
+        assert automated(f"Subject: x\nFrom: {sender}\n", "msg"), sender
+    assert not automated("Subject: x\nFrom: Lee, Sam <sam@example.com>\n", "msg")
+    assert not automated("From: no-reply@example.com", "txt")  # only mail is judged
 
 
 def test_chunking_covers_the_start_of_a_long_document():

@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from email.utils import getaddresses, parsedate_to_datetime
 
 EMAIL_KINDS = {"msg", "eml"}
+# Raise when a derived field changes meaning, so existing documents are derived again.
+ENRICHMENT_VERSION = 2
 HEADER_LIMIT = 4000
 MAX_ENTITIES = 64
 
@@ -19,6 +21,16 @@ SUBJECT_LINE = re.compile(r"^Subject:[ \t]*(.+)$", re.MULTILINE)
 DATE_LINE = re.compile(r"^Date:[ \t]*(.+)$", re.MULTILINE)
 PARTICIPANT_LINE = re.compile(r"^(?:From|To|Cc):[ \t]*(.+)$", re.MULTILINE)
 ADDRESS_IN_NAME = re.compile(r"<[^>]*>")
+
+FROM_LINE = re.compile(r"^From:[ \t]*(.+)$", re.MULTILINE)
+# Senders that are a system rather than a person. Automated mail is worth indexing and
+# ruinous to rank alongside correspondence, so it is marked rather than excluded.
+AUTOMATED = re.compile(
+    r"no[-_.]?reply|do[-_.]?not[-_.]?reply|donotreply|notification|postmaster|mailer-daemon"
+    r"|automation|@(?:jira|confluence|atlassian|jenkins|github|gitlab)\."
+    r"|\((?:jira|confluence|bitbucket|jenkins|github|gitlab)\)",
+    re.IGNORECASE,
+)
 
 TICKET = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-(\d{1,6})\b")
 ADDRESS = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]{2,}\b")
@@ -90,6 +102,14 @@ def document_date(content: str, kind: str):
     return int(moment.timestamp()) * 1_000_000_000
 
 
+def automated(content: str, kind: str) -> bool:
+    """Whether a message came from a system rather than a person."""
+    if kind not in EMAIL_KINDS:
+        return False
+    sender = FROM_LINE.search(content[:HEADER_LIMIT])
+    return bool(sender and AUTOMATED.search(sender.group(1)))
+
+
 def participants(content: str, kind: str):
     """Display names on the From, To and Cc lines of an indexed message."""
     for match in PARTICIPANT_LINE.finditer(content[:HEADER_LIMIT]):
@@ -132,5 +152,6 @@ def enrichment(content: str, title: str, kind: str, fallback_ns: int):
     return {
         "document_ns": document_date(content, kind) or fallback_ns,
         "thread": thread_key(content, title, kind),
+        "automated": int(automated(content, kind)),
         "entities": entities(content, kind),
     }

@@ -10,6 +10,14 @@ import struct
 
 MODEL = "minishlab/potion-base-8M"
 DIMENSIONS = 256
+# Vectors are stored with unit length, so distance depends on direction alone and can be
+# compared against a fixed threshold. Raise when that storage changes, which makes an
+# index built the old way rebuild itself rather than compare incomparable numbers.
+FORMAT = "unit-length-1"
+# Nearest-neighbour search returns the closest vectors however far away they are, so
+# without a limit a search for something absent still returns a page of noise. Unit
+# vectors put this at roughly a quarter cosine similarity.
+MAX_DISTANCE = 1.25
 CHUNK = 2000
 OVERLAP = 200
 # Nearest-neighbour search scans every stored vector, so each extra window per document
@@ -63,7 +71,11 @@ def pieces(title: str, content: str):
 
 
 def pack(vector):
-    return struct.pack(f"{len(vector)}f", *(float(value) for value in vector))
+    values = [float(value) for value in vector]
+    length = sum(value * value for value in values) ** 0.5
+    if length:
+        values = [value / length for value in values]
+    return struct.pack(f"{len(values)}f", *values)
 
 
 _LOADED = {}
@@ -89,10 +101,14 @@ def prepare(db):
     return db
 
 
+def setting_of(db, key) -> str:
+    row = db.execute("SELECT value FROM vector_settings WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else ""
+
+
 def model_of(db) -> str:
     """The model the stored vectors were built with, which queries must match."""
-    row = db.execute("SELECT value FROM vector_settings WHERE key = 'model'").fetchone()
-    return row[0] if row else ""
+    return setting_of(db, "model")
 
 
 def pending(db) -> int:
@@ -110,22 +126,22 @@ def build(
     documents = chunks = 0
     with store.connect() as db:
         prepare(db)
-        if rebuild:
-            db.execute("DELETE FROM vectors")
-            db.execute("DELETE FROM embedded")
         # Vectors from two different models cannot be compared, so changing the model
         # discards what is there rather than silently mixing them.
-        previous = model_of(db)
-        if not previous and db.execute("SELECT COUNT(*) FROM embedded").fetchone()[0]:
-            # Vectors built before the model was recorded came from the default.
-            previous = MODEL
-        if previous and previous != model_name:
-            if report:
-                report(f"Model changed from {previous}; rebuilding every vector")
+        built_before = db.execute("SELECT COUNT(*) FROM embedded").fetchone()[0]
+        # Vectors built before these were recorded came from the default model, stored
+        # the old way.
+        previous = model_of(db) or (MODEL if built_before else "")
+        stored_format = setting_of(db, "format") or ("unrecorded" if built_before else FORMAT)
+        if rebuild or (previous and previous != model_name) or stored_format != FORMAT:
+            if report and built_before:
+                reason = "Model changed" if previous != model_name else "Vector storage changed"
+                report(f"{reason}; rebuilding every vector")
             db.execute("DELETE FROM vectors")
             db.execute("DELETE FROM embedded")
-        db.execute(
-            "INSERT OR REPLACE INTO vector_settings(key, value) VALUES ('model', ?)", (model_name,)
+        db.executemany(
+            "INSERT OR REPLACE INTO vector_settings(key, value) VALUES (?, ?)",
+            (("model", model_name), ("format", FORMAT)),
         )
         remaining = pending(db)
         # Vectors for documents that have since been removed.
@@ -200,9 +216,9 @@ def similar(store, query: str, limit: int = FUSION_DEPTH, encode=None, model_nam
         ).fetchall()
     best = {}
     for row in rows:
-        document_id = row["document_id"]
-        if document_id not in best:
-            best[document_id] = row["distance"]
+        if row["distance"] > MAX_DISTANCE:
+            continue
+        best.setdefault(row["document_id"], row["distance"])
     return list(best)[:limit]
 
 
@@ -231,31 +247,33 @@ def group(store, ranking):
     return order, sizes
 
 
-def search(
-    store,
-    query="",
-    kind="",
-    offset=0,
-    limit=40,
-    collapse=False,
-    encode=None,
-    model_name: str = "",
-):
-    """Full-text and vector results combined by reciprocal rank fusion."""
-    lexical = store.search(query, kind=kind, limit=FUSION_DEPTH)
+def search(store, query, encode=None, model_name: str = ""):
+    """Full-text and vector results combined by reciprocal rank fusion.
+
+    Both arms are narrowed by the same predicates through `store.narrow`, so a filter
+    cannot apply to one and quietly not the other.
+    """
+    lexical = store.search(
+        query.text,
+        kind=query.kind,
+        limit=FUSION_DEPTH,
+        entity=query.entity,
+        since=query.since,
+        until=query.until,
+        people_only=query.people_only,
+        exclude=query.exclude,
+    )
     snippets = {item["id"]: item["snippet"] for item in lexical["items"]}
     ranking = [item["id"] for item in lexical["items"]]
-    if query.strip():
-        meanings = similar(store, query, FUSION_DEPTH, encode=encode, model_name=model_name)
-        if kind:
-            allowed = store.kinds_of(meanings, kind)
-            meanings = [document_id for document_id in meanings if document_id in allowed]
-        ranking = fuse(ranking, meanings)
+    if query.text.strip():
+        meanings = similar(store, query.text, FUSION_DEPTH, encode=encode, model_name=model_name)
+        allowed = store.narrow(meanings, **query.narrowing())
+        ranking = fuse(ranking, [document_id for document_id in meanings if document_id in allowed])
     matched = len(ranking)
     sizes = {}
-    if collapse:
+    if query.collapse:
         ranking, sizes = group(store, ranking)
-    page = ranking[offset : offset + limit]
+    page = ranking[query.offset : query.offset + query.limit]
     items = [
         {
             **item,
@@ -268,6 +286,6 @@ def search(
         "items": items,
         "total": len(ranking),
         "matched": matched,
-        "offset": offset,
-        "limit": limit,
+        "offset": query.offset,
+        "limit": query.limit,
     }

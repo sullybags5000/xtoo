@@ -61,28 +61,25 @@ def main():
             return
         settings = load_settings(args.config)
         if args.command == "search":
+            from .query import Query as Ask
+            from .query import moment
+            from .query import run as answer
             from .store import Store
 
-            store = Store(settings.data_dir)
-            limit = max(1, min(args.limit, 100))
-            if args.meaning:
-                from .vectors import search as fused
-
-                found = fused(
-                    store,
-                    " ".join(args.query),
+            found = answer(
+                Store(settings.data_dir),
+                Ask(
+                    text=" ".join(args.query),
                     kind=args.kind,
-                    limit=limit,
-                    collapse=not args.expand,
-                )
-            else:
-                found = store.search(
-                    " ".join(args.query),
-                    kind=args.kind,
-                    limit=limit,
                     entity=args.entity,
+                    since=moment(args.since),
+                    until=moment(args.until, end_of_day=True),
                     collapse=not args.expand,
-                )
+                    meaning=args.meaning,
+                    people_only=args.people,
+                    limit=max(1, min(args.limit, 100)),
+                ),
+            )
             if args.json:
                 print(json.dumps(found, indent=2))
                 return

@@ -3,6 +3,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from .enrich import ENRICHMENT_VERSION
+
 TABLES = """
 CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY,
@@ -14,8 +16,16 @@ CREATE TABLE IF NOT EXISTS documents (
     size INTEGER NOT NULL,
     content TEXT NOT NULL,
     document_ns INTEGER NOT NULL DEFAULT 0,
-    thread TEXT NOT NULL DEFAULT ''
+    thread TEXT NOT NULL DEFAULT '',
+    automated INTEGER NOT NULL DEFAULT 0,
+    enriched INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS folders (
+    path TEXT PRIMARY KEY,
+    root TEXT NOT NULL,
+    mtime_ns INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS entities (
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
@@ -60,7 +70,9 @@ INTERNAL = {"score", "thread_key", "position"}
 # Grouping reads a bounded window of the best matches. Collapsing every match would
 # mean a window function over the whole index on each keystroke.
 CANDIDATES = 2000
-COLUMNS = f"d.id, d.title, d.path, d.kind, d.size, d.thread, {DATE_COLUMN} AS document_ns"
+COLUMNS = (
+    f"d.id, d.title, d.path, d.kind, d.size, d.thread, d.automated, {DATE_COLUMN} AS document_ns"
+)
 
 
 def shaped(row, thread_size=None):
@@ -86,6 +98,8 @@ class Store:
         for name, definition in (
             ("document_ns", "INTEGER NOT NULL DEFAULT 0"),
             ("thread", "TEXT NOT NULL DEFAULT ''"),
+            ("automated", "INTEGER NOT NULL DEFAULT 0"),
+            ("enriched", "INTEGER NOT NULL DEFAULT 0"),
         ):
             if name not in columns:
                 db.execute(f"ALTER TABLE documents ADD COLUMN {name} {definition}")
@@ -115,18 +129,34 @@ class Store:
         content,
         document_ns=0,
         thread="",
+        automated=0,
         entities=(),
+        enriched=ENRICHMENT_VERSION,
     ):
         with self.connect() as db:
             document_id = db.execute(
                 """INSERT INTO documents(path, root, title, kind, modified_ns, size, content,
-                document_ns, thread) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                document_ns, thread, automated, enriched)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(path) DO UPDATE SET root=excluded.root, title=excluded.title,
                 kind=excluded.kind, modified_ns=excluded.modified_ns,
                 size=excluded.size, content=excluded.content,
-                document_ns=excluded.document_ns, thread=excluded.thread
+                document_ns=excluded.document_ns, thread=excluded.thread,
+                automated=excluded.automated, enriched=excluded.enriched
                 RETURNING id""",
-                (path, root, title, kind, modified_ns, size, content, document_ns, thread),
+                (
+                    path,
+                    root,
+                    title,
+                    kind,
+                    modified_ns,
+                    size,
+                    content,
+                    document_ns,
+                    thread,
+                    automated,
+                    enriched,
+                ),
             ).fetchone()[0]
             self.link(db, document_id, entities)
 
@@ -237,44 +267,120 @@ class Store:
         with self.connect() as db:
             return self.hydrate(db, ids)
 
-    def kinds_of(self, ids, kind):
-        """Which of the given ids are of one file type."""
-        if not ids:
-            return set()
-        marks = ",".join("?" * len(ids))
-        with self.connect() as db:
-            return {
-                row[0]
-                for row in db.execute(
-                    f"SELECT id FROM documents WHERE kind = ? AND id IN ({marks})",
-                    (kind, *ids),
-                )
-            }
-
-    def search(self, query="", kind="", offset=0, limit=40, entity="", collapse=False):
-        # Treat user input as literal words, never as FTS operators or SQL.
-        terms = re.findall(r"[^\W_]+", query, re.UNICODE)[:32]
-        expression = " AND ".join('"' + term + '"*' for term in terms)
-        empty = {"items": [], "total": 0, "matched": 0, "offset": offset, "limit": limit}
-        params = []
+    def predicates(self, kind="", entity="", since=0, until=0, people_only=False, exclude=()):
+        """SQL conditions and parameters shared by every way of searching."""
         conditions = []
-        source = "documents d"
-        snippet = "substr(d.content, 1, 240)"
-        score = "0"
-        if expression:
-            source += " JOIN search_index ON search_index.rowid = d.id"
-            conditions.append("search_index MATCH ?")
-            params.append(expression)
-            snippet = "snippet(search_index, 1, '', '', ' … ', 36)"
-            score = "bm25(search_index, 5.0, 1.0)"
-        elif query.strip():
-            return empty
+        params = []
         if kind:
             conditions.append("d.kind = ?")
             params.append(kind)
         if entity:
             conditions.append("d.id IN (SELECT document_id FROM entities WHERE name = ?)")
             params.append(entity)
+        if since:
+            conditions.append(f"{DATE_COLUMN} >= ?")
+            params.append(since)
+        if until:
+            conditions.append(f"{DATE_COLUMN} <= ?")
+            params.append(until)
+        if people_only:
+            conditions.append("d.automated = 0")
+        for fragment in exclude:
+            conditions.append("d.path NOT LIKE ?")
+            params.append(f"%{fragment}%")
+        return conditions, params
+
+    def narrow(self, ids, **predicates):
+        """Which of the given ids satisfy the predicates, for rankings built outside SQL."""
+        if not ids:
+            return set()
+        conditions, params = self.predicates(**predicates)
+        if not conditions:
+            return set(ids)
+        marks = ",".join("?" * len(ids))
+        where = " AND ".join(conditions)
+        with self.connect() as db:
+            return {
+                row[0]
+                for row in db.execute(
+                    f"SELECT d.id FROM documents d WHERE d.id IN ({marks}) AND {where}",
+                    (*ids, *params),
+                )
+            }
+
+    def remember(self, key, value):
+        with self.connect() as db:
+            db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, str(value)))
+
+    def recall(self, key, default=""):
+        with self.connect() as db:
+            row = db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+            return row[0] if row else default
+
+    def folder_times(self, root):
+        with self.connect() as db:
+            return {
+                row["path"]: row["mtime_ns"]
+                for row in db.execute("SELECT path, mtime_ns FROM folders WHERE root = ?", (root,))
+            }
+
+    def record_folders(self, root, times):
+        with self.connect() as db:
+            db.execute("DELETE FROM folders WHERE root = ?", (root,))
+            db.executemany(
+                "INSERT OR REPLACE INTO folders(path, root, mtime_ns) VALUES (?, ?, ?)",
+                ((path, root, mtime) for path, mtime in times.items()),
+            )
+
+    def paths_under(self, root, directory):
+        """Indexed paths directly inside one directory, for skipping unchanged folders."""
+        with self.connect() as db:
+            return [
+                row[0]
+                for row in db.execute(
+                    "SELECT path FROM documents WHERE root = ? AND path LIKE ? AND "
+                    "instr(substr(path, ?), '/') = 0",
+                    (root, f"{directory}/%", len(directory) + 2),
+                )
+            ]
+
+    def search(
+        self,
+        query="",
+        kind="",
+        offset=0,
+        limit=40,
+        entity="",
+        collapse=False,
+        since=0,
+        until=0,
+        people_only=False,
+        exclude=(),
+    ):
+        # Treat user input as literal words, never as FTS operators or SQL.
+        terms = re.findall(r"[^\W_]+", query, re.UNICODE)[:32]
+        expression = " AND ".join('"' + term + '"*' for term in terms)
+        empty = {"items": [], "total": 0, "matched": 0, "offset": offset, "limit": limit}
+        conditions, params = self.predicates(
+            kind=kind,
+            entity=entity,
+            since=since,
+            until=until,
+            people_only=people_only,
+            exclude=exclude,
+        )
+        source = "documents d"
+        snippet = "substr(d.content, 1, 240)"
+        score = "0"
+        if expression:
+            source += " JOIN search_index ON search_index.rowid = d.id"
+            # The match must lead, so its parameter goes before the narrowing ones.
+            conditions.insert(0, "search_index MATCH ?")
+            params.insert(0, expression)
+            snippet = "snippet(search_index, 1, '', '', ' … ', 36)"
+            score = "bm25(search_index, 5.0, 1.0)"
+        elif query.strip():
+            return empty
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         # A constant score would stop the date index being used when browsing.
         order = "score, document_ns DESC, id DESC" if expression else "document_ns DESC, id DESC"
