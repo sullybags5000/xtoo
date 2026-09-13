@@ -8,6 +8,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .config import Settings
 from .indexer import Indexer
+from .query import Query as Ask
+from .query import moment
+from .query import run as answer
 from .store import Store
 from .vectors import ready as vectors_ready
 
@@ -58,14 +61,26 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
         entity: str = Query("", max_length=120),
         collapse: bool = Query(False),
         meaning: bool = Query(False),
+        people: bool = Query(False),
+        since: str = Query("", max_length=10),
+        until: str = Query("", max_length=10),
     ):
-        if meaning and q.strip() and not entity:
-            from .vectors import available
-            from .vectors import search as fused
-
-            if available():
-                return fused(store, q, kind=kind, offset=offset, limit=limit, collapse=collapse)
-        return store.search(q, kind, offset, limit, entity, collapse)
+        try:
+            asked = Ask(
+                text=q,
+                kind=kind,
+                entity=entity,
+                since=moment(since),
+                until=moment(until, end_of_day=True),
+                collapse=collapse,
+                meaning=meaning,
+                people_only=people,
+                offset=offset,
+                limit=limit,
+            )
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        return answer(store, asked)
 
     @app.get("/api/entities")
     def entities(prefix: str = Query("", max_length=120)):
