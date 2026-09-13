@@ -122,6 +122,7 @@ async function search() {
     kind: $("kind").value,
     entity,
     collapse: $("collapse").checked,
+    meaning: $("meaning").checked,
     offset,
     limit,
   });
@@ -203,6 +204,7 @@ async function status() {
       : data.last_finished
         ? `Last scan ${new Date(data.last_finished).toLocaleTimeString()} · ${data.skipped || 0} oversized files skipped`
         : "Waiting for first scan";
+    $("meaning-toggle").hidden = !data.semantic;
     $("refresh").disabled = data.running;
     $("refresh").textContent = data.running ? "Indexing…" : "Refresh index";
     $("folders").replaceChildren(
@@ -266,6 +268,10 @@ $("kind").addEventListener("change", () => {
   search();
 });
 $("collapse").addEventListener("change", () => {
+  offset = 0;
+  search();
+});
+$("meaning").addEventListener("change", () => {
   offset = 0;
   search();
 });

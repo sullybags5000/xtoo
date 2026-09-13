@@ -184,6 +184,36 @@ class Store:
                 )
             ]
 
+    def by_ids(self, ids):
+        """Documents in the order given, for rankings produced outside SQL."""
+        if not ids:
+            return []
+        marks = ",".join("?" * len(ids))
+        with self.connect() as db:
+            found = {
+                row["id"]: {**dict(row), "thread_size": 1}
+                for row in db.execute(
+                    f"SELECT {COLUMNS}, substr(d.content, 1, 240) AS snippet "
+                    f"FROM documents d WHERE d.id IN ({marks})",
+                    tuple(ids),
+                )
+            }
+        return [found[document_id] for document_id in ids if document_id in found]
+
+    def kinds_of(self, ids, kind):
+        """Which of the given ids are of one file type."""
+        if not ids:
+            return set()
+        marks = ",".join("?" * len(ids))
+        with self.connect() as db:
+            return {
+                row[0]
+                for row in db.execute(
+                    f"SELECT id FROM documents WHERE kind = ? AND id IN ({marks})",
+                    (kind, *ids),
+                )
+            }
+
     def search(self, query="", kind="", offset=0, limit=40, entity="", collapse=False):
         # Treat user input as literal words, never as FTS operators or SQL.
         terms = re.findall(r"[^\W_]+", query, re.UNICODE)[:32]

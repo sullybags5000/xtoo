@@ -42,7 +42,14 @@ def result(item: dict) -> dict:
 
 
 def search(store: Store, query: str, kind: str = "", limit: int = 10, collapse: bool = True):
-    found = store.search(query, kind=kind, limit=max(1, min(limit, 50)), collapse=collapse)
+    from . import vectors
+
+    limit = max(1, min(limit, 50))
+    if query.strip() and vectors.ready(store):
+        # Meaning and keywords combined, so a paraphrase still finds the document.
+        found = vectors.search(store, query, kind=kind, limit=limit)
+    else:
+        found = store.search(query, kind=kind, limit=limit, collapse=collapse)
     return {"total": found["total"], "results": [result(item) for item in found["items"]]}
 
 

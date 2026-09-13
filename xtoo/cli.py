@@ -29,7 +29,11 @@ def main():
     find.add_argument("--limit", type=int, default=10)
     find.add_argument("--expand", action="store_true", help="List every message in a conversation")
     find.add_argument("--json", action="store_true", help="Print results as JSON")
+    find.add_argument(
+        "--meaning", action="store_true", help="Combine full-text with semantic search"
+    )
     commands.add_parser("migrate", help="Backfill dates, conversations and entities in the index")
+    commands.add_parser("embed", help="Build semantic vectors for the index")
     commands.add_parser("mcp", help="Serve the index to an MCP client over stdio")
     args = parser.parse_args()
     # Index content is private to this Linux user by default, including SQLite sidecars.
@@ -51,13 +55,20 @@ def main():
         if args.command == "search":
             from .store import Store
 
-            found = Store(settings.data_dir).search(
-                " ".join(args.query),
-                kind=args.kind,
-                limit=max(1, min(args.limit, 100)),
-                entity=args.entity,
-                collapse=not args.expand,
-            )
+            store = Store(settings.data_dir)
+            limit = max(1, min(args.limit, 100))
+            if args.meaning:
+                from .vectors import search as fused
+
+                found = fused(store, " ".join(args.query), kind=args.kind, limit=limit)
+            else:
+                found = store.search(
+                    " ".join(args.query),
+                    kind=args.kind,
+                    limit=limit,
+                    entity=args.entity,
+                    collapse=not args.expand,
+                )
             if args.json:
                 print(json.dumps(found, indent=2))
                 return
@@ -80,6 +91,13 @@ def main():
             print(
                 f"Enriched {enrich_documents(Store(settings.data_dir), report=print):,} documents."
             )
+            return
+        if args.command == "embed":
+            from .store import Store
+            from .vectors import build
+
+            built = build(Store(settings.data_dir), report=print)
+            print(f"Embedded {built['documents']:,} documents as {built['chunks']:,} chunks.")
             return
         if args.command == "mcp":
             from .mcp_server import serve
