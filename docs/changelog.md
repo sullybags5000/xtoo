@@ -18,6 +18,13 @@
   range of each folder in an existing export so a top-up can start where it ends.
 - Added `-Since` to the export script for topping up an existing export.
 - Added `olefile` as a runtime dependency for `.msg` parsing.
+- Added message dates, so mail sorts by when it was sent rather than when it was
+  exported, with `xtoo migrate` to derive them for an existing index.
+- Added conversation grouping for replies and forwards, and entity links for tracker
+  references, correspondents and addresses across all file types.
+- Added `xtoo search` for terminal queries and `xtoo mcp`, a read-only MCP server.
+- Added optional semantic search (`xtoo embed`) using local static embeddings stored
+  in the index through `sqlite-vec`.
 
 ## 0.1.1 — 2026-09-11
 

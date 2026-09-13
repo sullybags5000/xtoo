@@ -54,7 +54,16 @@ END;
 
 # Older indexes predate document_ns, so fall back to the file timestamp until migrated.
 DATE_COLUMN = "CASE WHEN d.document_ns > 0 THEN d.document_ns ELSE d.modified_ns END"
+# Ranking scaffolding that callers should never see.
+INTERNAL = {"score", "thread_key", "position"}
 COLUMNS = f"d.id, d.title, d.path, d.kind, d.size, d.thread, {DATE_COLUMN} AS document_ns"
+
+
+def shaped(row, thread_size=None):
+    item = {key: value for key, value in dict(row).items() if key not in INTERNAL}
+    if thread_size is not None:
+        item["thread_size"] = thread_size
+    return item
 
 
 class Store:
@@ -191,7 +200,7 @@ class Store:
         marks = ",".join("?" * len(ids))
         with self.connect() as db:
             found = {
-                row["id"]: {**dict(row), "thread_size": 1}
+                row["id"]: shaped(row, 1)
                 for row in db.execute(
                     f"SELECT {COLUMNS}, substr(d.content, 1, 240) AS snippet "
                     f"FROM documents d WHERE d.id IN ({marks})",
@@ -248,7 +257,7 @@ class Store:
                     f"SELECT {selection} FROM {source}{where} ORDER BY {order} LIMIT ? OFFSET ?",
                     (*params, limit, offset),
                 ).fetchall()
-                items = [{**dict(row), "thread_size": 1} for row in rows]
+                items = [shaped(row, 1) for row in rows]
             else:
                 # Documents outside a conversation each stand alone.
                 key = "CASE WHEN d.thread = '' THEN 'id:' || d.id ELSE d.thread END"
@@ -266,8 +275,5 @@ class Store:
                     f"ORDER BY {order} LIMIT ? OFFSET ?",
                     (*params, limit, offset),
                 ).fetchall()
-                items = [
-                    {key: value for key, value in dict(row).items() if key != "position"}
-                    for row in rows
-                ]
+                items = [shaped(row) for row in rows]
             return {"items": items, "total": total, "offset": offset, "limit": limit}

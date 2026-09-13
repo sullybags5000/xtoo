@@ -25,6 +25,11 @@ Exported mail is treated the same way: `.msg` and `.eml` files are parsed as
 data, attachments are never opened or decoded, and message text is copied into
 the index. An export is a second unencrypted copy of mailbox content on disk.
 
+Two optional features change where that text can go. The [MCP server](assistant.md)
+lets an assistant read indexed content, which leaves the machine with the conversation;
+it is read-only and installed separately. [Semantic search](semantic.md) stays local:
+the model runs on this machine and vectors are stored in the same index file.
+
 Before indexing work content, confirm that local indexing, mail export, and
 database storage are allowed by company policy. No Microsoft, Confluence, or AI credentials are
 used by this release.
