@@ -21,9 +21,35 @@ files, and indexing issues.
 | `xtoo serve` | Local UI on `127.0.0.1:8765` until Ctrl+C. |
 | `xtoo serve --port 8766` | Uses a port from 1024 through 65535. |
 | `xtoo --config PATH serve` | Uses an explicit TOML file. |
+| `xtoo search WORDS` | Searches from the terminal; `--kind`, `--entity`, `--limit`, `--expand`, `--meaning`, `--json`. |
+| `xtoo migrate` | Derives dates, conversations and entity links for documents indexed earlier. |
+| `xtoo embed` | Builds [semantic](semantic.md) vectors; needs the `vectors` extra. |
+| `xtoo mcp` | Serves the index to an [MCP client](assistant.md) over stdio. |
 
 `xtoo init` exits `2` for an existing configuration or invalid input. Do not
 expose the server through a tunnel or shared proxy.
+
+## Conversations and links
+
+Indexed mail carries the date it was sent, not the date it was exported, so results
+sort by when things actually happened. Replies and forwards of one subject share a
+conversation, and **Group replies** in the search bar shows one row per conversation
+with the number of messages in it; clear the tick to see every reply.
+
+Documents are also linked by the identifiers they mention — tracker references such as
+`PROJ-4821`, correspondents as written in mail headers, and email addresses. Selecting
+a result lists its links, and choosing one shows every document that mentions it,
+across mail, scripts and documents alike. **Clear link** returns to the whole library.
+
+An index built by an earlier version has none of this until it is derived, which reads
+the text already stored rather than reopening any file:
+
+```bash
+xtoo migrate
+```
+
+It reports progress, can be interrupted, and skips what it has already done. Run it
+once after upgrading; new documents are enriched as they are indexed.
 
 ## HTTP API
 
@@ -31,13 +57,16 @@ The local API has no authentication and is intended for the bundled UI.
 
 | Endpoint | Inputs | Response |
 | --- | --- | --- |
-| `GET /api/search` | `q`, `kind`, `offset`, `limit` (`limit` 1–100) | Results and pagination fields |
+| `GET /api/search` | `q`, `kind`, `offset`, `limit` (`limit` 1–100), `entity`, `collapse`, `meaning` | Results and pagination fields |
+| `GET /api/entities` | `prefix` (empty lists the most mentioned) | Identifiers with document counts |
 | `GET /api/documents/{id}` | Numeric ID | Metadata and up to 100,000 characters |
-| `GET /api/status` | None | Scan state, counts, folders, errors |
+| `GET /api/status` | None | Scan state, counts, folders, errors, whether semantic search is ready |
 | `POST /api/index` | `X-Xtoo-Request: 1`; same-origin `Origin` if supplied | `202` scan request |
 
 ```bash
 curl 'http://localhost:8765/api/search?q=budget&limit=10'
+curl 'http://localhost:8765/api/search?entity=PROJ-4821'
+curl 'http://localhost:8765/api/entities?prefix=VX'
 curl http://localhost:8765/api/status
 curl -X POST -H 'X-Xtoo-Request: 1' http://localhost:8765/api/index
 ```

@@ -18,6 +18,9 @@ browser UI, full-text search, filters, and text previews.
 | TOML and storage reference | [Configuration](docs/configuration.md) |
 | Operating the UI and CLI | [Usage](docs/usage.md) |
 | Indexing Outlook and other mail | [Email](docs/email.md) |
+| Dates, conversations and links | [Usage](docs/usage.md#conversations-and-links) |
+| Assistant and terminal access | [Assistant](docs/assistant.md) |
+| Meaning-aware search | [Semantic search](docs/semantic.md) |
 | Local development | [Development](docs/development.md) |
 | Test suite and checks | [Testing](docs/testing.md) |
 | Local deployment and upgrades | [Deployment](docs/deployment.md) |

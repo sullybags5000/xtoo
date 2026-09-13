@@ -1,0 +1,57 @@
+# Semantic search
+
+Full-text search needs the words in the document. Semantic search also finds documents
+that mean the same thing in different words, so "bounce the vcenter daemon" reaches a
+script that says `systemctl restart vpxd`.
+
+It is optional and off until built. Everything runs on this machine: a small static
+embedding model on the CPU, and vectors stored in the same SQLite file through the
+`sqlite-vec` extension. There is no service, no GPU and no network call at search time.
+
+## Build
+
+```bash
+cd ~/xtoo
+source .venv/bin/activate
+python -m pip install -e '.[vectors]'
+xtoo embed
+```
+
+The first run downloads the embedding model (about 30 MB) from Hugging Face; after
+that it is cached and no network is needed. If your network blocks that download, the
+rest of Xtoo is unaffected.
+
+`xtoo embed` reads documents from the index rather than from disk, embeds the first
+6,000 characters of each as up to four overlapping windows, and reports progress. It is
+safe to interrupt: rerunning continues where it stopped. It also re-embeds documents
+whose text changed and drops vectors for documents that were removed, so running it
+after a scan keeps it current.
+
+| Measure | Value |
+| --- | --- |
+| Model | `minishlab/potion-base-8M`, 256 dimensions |
+| Speed | roughly 10,000 windows per second on a laptop CPU |
+| Index growth | roughly 1 KB per window, so about 1 GB for 250,000 documents |
+
+## Use
+
+In the browser, tick **Meaning** in the search bar. The toggle appears only once
+vectors exist. From the terminal or an assistant:
+
+```bash
+xtoo search --meaning bounce the vcenter daemon
+```
+
+Results combine the full-text and semantic rankings by reciprocal rank fusion, rather
+than replacing one with the other: an exact keyword match still wins, while a
+paraphrase that full-text search would miss is now reachable. The MCP tools use the
+combined ranking automatically when vectors are built.
+
+## Limitations
+
+| Limitation | Detail |
+| --- | --- |
+| Only the start of a document | Four windows of 1,500 characters. A long report's later sections are found by full-text search but not by meaning. |
+| Static embeddings | Faster than a transformer by orders of magnitude, and correspondingly less precise. Good for recall, not for ranking subtleties. |
+| No filters in the semantic arm | `entity` and conversation grouping apply to full-text results; a semantic query narrows by file type only. |
+| Rebuild after bulk changes | Vectors follow the index, so run `xtoo embed` again after a large scan. |

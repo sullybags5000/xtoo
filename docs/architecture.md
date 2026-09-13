@@ -20,7 +20,11 @@ flowchart LR
 | `xtoo/extract.py` | Extension groups and text extraction; scripts are read, never executed |
 | `xtoo/mail.py` | Exported `.msg` and `.eml` messages; headers, attachment names, body |
 | `xtoo/text.py` | Shared byte decoding and HTML-to-text helpers |
-| `xtoo/store.py` | SQLite schema, FTS5 index, searches, previews, metadata |
+| `xtoo/enrich.py` | Dates, conversation keys and entities derived from indexed text |
+| `xtoo/migrate.py` | Backfills those fields for documents indexed earlier |
+| `xtoo/store.py` | SQLite schema, FTS5 index, entity links, searches, previews |
+| `xtoo/vectors.py` | Optional local embeddings and combined ranking (`sqlite-vec`) |
+| `xtoo/mcp_server.py` | Optional read-only MCP tools for an assistant |
 | `xtoo/web.py` | Local API, static UI, host/CSP/security headers |
 | `xtoo/static/` | Search UI, filters, preview, refresh, responsive layout |
 
@@ -33,6 +37,11 @@ Mail is indexed from files exported by
 [`scripts/Export-OutlookMail.ps1`](../scripts/Export-OutlookMail.ps1), which runs
 on Windows against a local Outlook profile. Xtoo itself never connects to
 Outlook or Microsoft 365; see [Email](email.md).
+
+Optional extras are dormant unless installed: `[mcp]` adds an
+[assistant interface](assistant.md) and `[vectors]` adds
+[semantic search](semantic.md), which embeds documents locally and stores the vectors
+in the same SQLite file. Neither introduces a service or a daemon.
 
 The current release has no network connectors, authentication, or remote AI
 service. Runtime dependencies are FastAPI, Uvicorn, pypdf, python-docx,
