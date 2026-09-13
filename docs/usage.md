@@ -23,7 +23,7 @@ files, and indexing issues.
 | `xtoo --config PATH serve` | Uses an explicit TOML file. |
 | `xtoo search WORDS` | Searches from the terminal; `--kind`, `--entity`, `--limit`, `--expand`, `--meaning`, `--json`. |
 | `xtoo migrate` | Derives dates, conversations and entity links for documents indexed earlier. |
-| `xtoo embed` | Builds [semantic](semantic.md) vectors; needs the `vectors` extra. |
+| `xtoo embed` | Builds [semantic](semantic.md) vectors; `--model`, `--rebuild`. Needs the `vectors` extra. |
 | `xtoo mcp` | Serves the index to an [MCP client](assistant.md) over stdio. |
 
 `xtoo init` exits `2` for an existing configuration or invalid input. Do not
