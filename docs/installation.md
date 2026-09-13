@@ -32,11 +32,25 @@ blocks downloads, use the organization-approved mirror or installation route.
 
 > [!NOTE]
 > A network that inspects TLS presents its own certificate, and downloads then
-> fail with a certificate error even though the site is reachable. Point the
-> tools at your organisation's root certificate:
-> `export SSL_CERT_FILE=/path/to/root.pem REQUESTS_CA_BUNDLE=/path/to/root.pem`,
-> and `npm config set cafile` for anything installed with npm. Use absolute
-> paths; a relative one fails with `invalid path`.
+> fail with a certificate error even though the site is reachable. Give each tool
+> your organisation's root certificate through its own configuration, which is
+> scoped to that tool:
+>
+> ```bash
+> pip config set global.cert /absolute/path/to/root.pem
+> npm config set cafile /absolute/path/to/root.pem
+> ```
+>
+> For a one-off command that needs it, set the variable for that command alone:
+> `SSL_CERT_FILE=/absolute/path/to/root.pem xtoo embed`. Use absolute paths; a
+> relative one fails with `invalid path`.
+
+> [!WARNING]
+> Do not export `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` from a shell profile.
+> They *replace* the trust store rather than adding to it, so every program that
+> reads them can then verify only the sites your proxy intercepts, and fails
+> against everything else. The symptom is unrelated tools suddenly receiving an
+> HTML error page from the proxy instead of the service they asked for.
 
 Configure paths visible from WSL. Replace the placeholders; quote paths with
 spaces:
