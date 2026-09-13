@@ -658,6 +658,46 @@ def test_chunking_covers_the_start_of_a_long_document():
     assert windows[0][-vectors.OVERLAP :] in windows[1]
 
 
+def test_api_answers_what_the_interface_asks_for(correspondence):
+    """The browser reads these fields and sends these parameters; both are a contract."""
+    import re
+    from pathlib import Path
+
+    _, settings, _, _ = correspondence
+    static = Path(__file__).resolve().parent.parent / "xtoo" / "static"
+    script = (static / "app.js").read_text()
+    markup = (static / "index.html").read_text()
+    for element in sorted(set(re.findall(r'\$\("([a-z-]+)"\)', script))):
+        assert f'id="{element}"' in markup, element
+
+    with TestClient(create_app(settings, background=False), base_url="http://localhost") as client:
+        sent = {
+            "q": "upgrade",
+            "kind": "msg",
+            "entity": "",
+            "collapse": "true",
+            "meaning": "false",
+            "people": "false",
+            "since": "2026-01-01",
+            "until": "2026-12-31",
+            "offset": 0,
+            "limit": 40,
+        }
+        found = client.get("/api/search", params=sent).json()
+        assert set(found) == {"items", "total", "matched", "offset", "limit"}
+        for item in found["items"]:
+            assert {"id", "title", "path", "kind", "size", "document_ns", "thread_size"} <= set(
+                item
+            )
+            assert "snippet" in item
+        document = client.get(f"/api/documents/{found['items'][0]['id']}").json()
+        assert {"content", "document_ns", "modified_ns", "entities", "preview_truncated"} <= set(
+            document
+        )
+        assert client.get("/api/status").json().keys() >= {"kinds", "folders", "semantic"}
+        assert client.get("/api/search", params={"since": "yesterday"}).status_code == 422
+
+
 def test_configuration_validation_and_nested_roots(tmp_path):
     config = tmp_path / "settings.toml"
     root = tmp_path / "documents"

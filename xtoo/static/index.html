@@ -61,10 +61,17 @@
         </select>
         <label class="toggle" for="collapse"
           ><input id="collapse" type="checkbox" checked /> Group replies</label
+        ><label class="toggle" for="people"
+          ><input id="people" type="checkbox" /> People only</label
         ><label class="toggle" for="meaning" id="meaning-toggle" hidden
           ><input id="meaning" type="checkbox" /> Meaning</label
         >
       </section>
+      <div class="dates">
+        <label for="since">From</label><input id="since" type="date" />
+        <label for="until">to</label><input id="until" type="date" />
+        <button id="clear-dates" class="secondary" hidden>Any date</button>
+      </div>
       <div id="entity-filter" class="entity-filter" hidden>
         <span>Linked to</span><code id="entity-name"></code
         ><button id="entity-clear" class="secondary">Clear link</button>
