@@ -36,6 +36,10 @@ sort by when things actually happened. Replies and forwards of one subject share
 conversation, and **Group replies** in the search bar shows one row per conversation
 with the number of messages in it; clear the tick to see every reply.
 
+Grouping applies to meaning-aware results as well, which matters most for automated
+mail: a tracker that sends an update per comment produces dozens of near-identical
+notifications that would otherwise fill a page each time.
+
 Grouping reads the best 2,000 matches rather than the whole index, so on a large
 library the conversation count is capped at that while the document count beside it
 stays exact. The alternative would be a grouping pass over every match on each

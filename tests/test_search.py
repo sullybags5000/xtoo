@@ -458,6 +458,21 @@ def test_changing_the_embedding_model_rebuilds_every_vector(correspondence):
         assert vectors.model_of(db) == "second/model"
 
 
+def test_semantic_results_group_conversations_too(correspondence):
+    pytest.importorskip("sqlite_vec")
+    from xtoo import vectors
+
+    _, _, store, _ = correspondence
+    vectors.build(store, encode=bag_of_words)
+    expanded = vectors.search(store, "upgrade", limit=20, encode=bag_of_words)
+    grouped = vectors.search(store, "upgrade", limit=20, collapse=True, encode=bag_of_words)
+    assert grouped["total"] < expanded["total"]
+    assert grouped["matched"] == expanded["total"]  # the documents behind the groups
+    leader = next(item for item in grouped["items"] if item["thread_size"] > 1)
+    assert leader["thread_size"] == 3
+    assert sum(item["thread_size"] for item in grouped["items"]) == expanded["total"]
+
+
 def test_chunking_covers_the_start_of_a_long_document():
     pytest.importorskip("sqlite_vec")
     from xtoo import vectors

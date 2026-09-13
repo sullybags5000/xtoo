@@ -64,7 +64,7 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
             from .vectors import search as fused
 
             if available():
-                return fused(store, q, kind=kind, offset=offset, limit=limit)
+                return fused(store, q, kind=kind, offset=offset, limit=limit, collapse=collapse)
         return store.search(q, kind, offset, limit, entity, collapse)
 
     @app.get("/api/entities")

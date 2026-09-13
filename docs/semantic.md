@@ -98,5 +98,5 @@ combined ranking automatically when vectors are built.
 | --- | --- |
 | Only the start of a document | Two windows of 2,000 characters. A long report's later sections are found by full-text search but not by meaning. |
 | Static embeddings | Faster than a transformer by orders of magnitude, and correspondingly less precise. Good for recall, not for ranking subtleties. |
-| No filters in the semantic arm | `entity` and conversation grouping apply to full-text results; a semantic query narrows by file type only. |
+| No entity filter in the semantic arm | Linking by identifier applies to full-text results; a semantic query narrows by file type, and conversations are grouped as usual. |
 | Rebuild after bulk changes | Vectors follow the index, so run `xtoo embed` again after a large scan. `xtoo embed --rebuild` starts from nothing. |
