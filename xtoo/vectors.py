@@ -214,7 +214,33 @@ def fuse(*rankings):
     return sorted(scores, key=lambda document_id: -scores[document_id])
 
 
-def search(store, query="", kind="", offset=0, limit=40, encode=None, model_name: str = ""):
+def group(store, ranking):
+    """Keep the best-ranked document of each conversation, with how many it stands for."""
+    threads = store.threads_of(ranking)
+    leaders = {}
+    sizes = {}
+    order = []
+    for document_id in ranking:
+        key = threads.get(document_id) or f"id:{document_id}"
+        if key in leaders:
+            sizes[leaders[key]] += 1
+        else:
+            leaders[key] = document_id
+            sizes[document_id] = 1
+            order.append(document_id)
+    return order, sizes
+
+
+def search(
+    store,
+    query="",
+    kind="",
+    offset=0,
+    limit=40,
+    collapse=False,
+    encode=None,
+    model_name: str = "",
+):
     """Full-text and vector results combined by reciprocal rank fusion."""
     lexical = store.search(query, kind=kind, limit=FUSION_DEPTH)
     snippets = {item["id"]: item["snippet"] for item in lexical["items"]}
@@ -225,15 +251,23 @@ def search(store, query="", kind="", offset=0, limit=40, encode=None, model_name
             allowed = store.kinds_of(meanings, kind)
             meanings = [document_id for document_id in meanings if document_id in allowed]
         ranking = fuse(ranking, meanings)
+    matched = len(ranking)
+    sizes = {}
+    if collapse:
+        ranking, sizes = group(store, ranking)
     page = ranking[offset : offset + limit]
     items = [
-        {**item, "snippet": snippets.get(item["id"], item["snippet"])}
+        {
+            **item,
+            "snippet": snippets.get(item["id"], item["snippet"]),
+            "thread_size": sizes.get(item["id"], 1),
+        }
         for item in store.by_ids(page)
     ]
     return {
         "items": items,
         "total": len(ranking),
-        "matched": len(ranking),
+        "matched": matched,
         "offset": offset,
         "limit": limit,
     }

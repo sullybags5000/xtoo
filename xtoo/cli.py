@@ -68,7 +68,13 @@ def main():
             if args.meaning:
                 from .vectors import search as fused
 
-                found = fused(store, " ".join(args.query), kind=args.kind, limit=limit)
+                found = fused(
+                    store,
+                    " ".join(args.query),
+                    kind=args.kind,
+                    limit=limit,
+                    collapse=not args.expand,
+                )
             else:
                 found = store.search(
                     " ".join(args.query),

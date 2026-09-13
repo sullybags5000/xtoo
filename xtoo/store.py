@@ -219,6 +219,19 @@ class Store:
         found = {row["id"]: shaped(row, 1) for row in rows}
         return [found[document_id] for document_id in ids if document_id in found]
 
+    def threads_of(self, ids):
+        """Conversation keys for a set of ids, for grouping a ranking built outside SQL."""
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        with self.connect() as db:
+            return {
+                row["id"]: row["thread"]
+                for row in db.execute(
+                    f"SELECT id, thread FROM documents WHERE id IN ({marks})", tuple(ids)
+                )
+            }
+
     def by_ids(self, ids):
         """Documents in the order given, for rankings produced outside SQL."""
         with self.connect() as db:
