@@ -1,11 +1,52 @@
 # Xtoo
 
-Xtoo is a local Python search application for indexed documents in WSL, with a
-browser UI, full-text search, filters, and text previews.
+Xtoo is a local search application for your own documents, scripts and exported
+mail. It runs entirely in WSL as one process over one SQLite file, with a browser
+interface, a terminal command, and an optional assistant interface.
+
+```bash
+xtoo init --folder /mnt/c/Users/YOUR_WINDOWS_USER/Documents
+xtoo serve        # http://localhost:8765
+```
+
+## What it indexes
+
+| Group | Formats |
+| --- | --- |
+| Text and markup | `.txt`, `.md`, `.rst`, `.csv`, `.tsv`, `.json`, `.xml`, `.yaml`, `.log`, `.html` |
+| Documents | `.pdf`, `.docx`, `.xlsx`, `.pptx` |
+| Scripts and configuration-as-code | `.ps1`, `.bat`, `.cmd`, `.vbs`, `.sh`, `.py`, `.js`, `.sql`, `.tf`, `.ini` and more |
+| Exported mail | `.msg`, `.eml` — headers, attachment names and body |
+
+Scripts and mail are read as text: nothing is executed, and no attachment is
+opened. Add further plain-text extensions with `extra_text_extensions`.
+
+## What it does
+
+- **One index for everything.** A hostname or an error string finds the script
+  that sets it, the document that describes it and the mail thread that argued
+  about it, in one result list.
+- **Real message dates.** Exported mail is dated by when it was sent, not by when
+  the export tool wrote the file, so results sort by when things happened.
+- **Conversations.** Replies and forwards collapse to one row with a message
+  count, which matters when a tracker sends an update per comment.
+- **Entity links.** Documents are linked by the identifiers they mention —
+  tracker references, correspondents, addresses — so one click assembles
+  everything touching a ticket or a person, across file types.
+- **Semantic search**, optional. A local static embedding model finds documents
+  that mean the same thing in different words, combined with full-text ranking
+  rather than replacing it. See [Semantic search](docs/semantic.md).
+- **Assistant access**, optional. A read-only MCP server lets a client such as
+  Claude Code search and read the index. See [Assistant](docs/assistant.md).
+- **Terminal search.** `xtoo search WORDS`, with `--kind`, `--entity`,
+  `--meaning` and `--json`.
+
+Scanning is incremental: unchanged files are skipped, deleted files are removed,
+and an unreachable folder keeps its cached results rather than emptying them.
 
 > [!NOTE]
-> The current release indexes local Windows folders only. Mail is indexed from
-> `.msg` and `.eml` files exported to one of those folders; see
+> Xtoo indexes local folders only. Mail is indexed from `.msg` and `.eml` files
+> exported into one of them, for which a Windows export script is included; see
 > [Email](docs/email.md). Live Outlook/Microsoft 365 and Confluence connectors
 > are planned and are not implemented.
 
@@ -31,9 +72,17 @@ browser UI, full-text search, filters, and text previews.
 
 ## Status and boundaries
 
-This is a single-user local application, not an enterprise deployment. The
-index contains extracted text and paths under `~/.local/share/xtoo` by default;
-it is not encrypted by Xtoo. Do not put work documents, credentials, or the
-index in Git. The repository has no declared open-source license.
+This is a single-user local application, not an enterprise deployment. It binds
+to `127.0.0.1` and has no authentication.
+
+The index holds extracted text and paths under `~/.local/share/xtoo` by default
+and is not encrypted by Xtoo. Indexed mail and scripts routinely contain
+hostnames, connection strings and credentials, so treat the index as work data.
+Nothing is sent to a service: semantic search runs its model locally, and the
+only exception is the optional assistant interface, where whatever an assistant
+retrieves leaves the machine with the conversation.
+
+Do not put work documents, credentials, or the index in Git. The repository has
+no declared open-source license.
 
 Last verified against commit `e12c91c`.

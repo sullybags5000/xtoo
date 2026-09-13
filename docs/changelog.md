@@ -24,7 +24,13 @@
   references, correspondents and addresses across all file types.
 - Added `xtoo search` for terminal queries and `xtoo mcp`, a read-only MCP server.
 - Added optional semantic search (`xtoo embed`) using local static embeddings stored
-  in the index through `sqlite-vec`.
+  in the index through `sqlite-vec`, with `--model` for a chosen or local model and
+  `--rebuild` to start again.
+- Added `scripts/mail_estimate.py`, which projects indexing time and index growth
+  from a sample before committing to a long run.
+- Grouped search and vector building were rewritten for large indexes: grouping is
+  about ten times faster, and embedding twenty thousand documents fell from over
+  fifteen minutes to under a minute.
 
 ## 0.1.1 — 2026-09-11
 
