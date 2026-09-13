@@ -4,8 +4,34 @@ There is no production deployment target in this repository. The supported
 deployment is one user's WSL environment with a localhost browser session.
 
 Nothing starts Xtoo automatically. Closing the terminal that runs it in the
-foreground stops it, and so do a Windows restart and `wsl --shutdown`. Choose one
-of the two patterns below.
+foreground stops it, and so do a Windows restart and `wsl --shutdown`.
+
+## The short version
+
+```bash
+~/xtoo/scripts/xtoo.sh start      # or status, stop, restart
+```
+
+That starts Xtoo in the background on `http://localhost:8765`, leaves an already
+running server alone, and writes to `~/xtoo.log`. It records the process id in
+`~/.xtoo.pid` rather than matching command lines, so stopping Xtoo cannot stop
+anything else. `status` reports what the index holds:
+
+```text
+Running (pid 4121) on http://localhost:8765
+  422,220 documents: 421,004 msg, 812 txt, 210 pdf, 94 py
+  last scan 2026-09-13T09:14:02+00:00
+  semantic search ready
+```
+
+Put this line in `~/.bashrc` to have it running whenever you open a terminal:
+
+```bash
+~/xtoo/scripts/xtoo.sh start >/dev/null
+```
+
+`XTOO_PORT`, `XTOO_LOG`, `XTOO_PID` and `XTOO_CONFIG` override the defaults. The
+rest of this page is what the script does, for when you want to do it by hand.
 
 ## For a quick look
 
@@ -37,12 +63,11 @@ This survives closing the terminal. It does not survive a Windows restart or
 Add to `~/.bashrc`:
 
 ```bash
-# Start Xtoo unless it is already running
-pgrep -f "xtoo serve" >/dev/null || (nohup ~/xtoo/.venv/bin/xtoo serve >>~/xtoo.log 2>&1 &)
+~/xtoo/scripts/xtoo.sh start >/dev/null
 ```
 
-The guard means opening several terminals does not start several servers. This
-also covers a Windows restart, since the first terminal you open brings it back.
+Opening several terminals does not start several servers, and this also covers a
+Windows restart, since the first terminal you open brings Xtoo back.
 
 For a server that starts without any terminal, a Windows Task Scheduler task at
 logon can run `wsl.exe` against the distribution directly; find the distribution
@@ -70,11 +95,10 @@ happened before the UI could. Xtoo writes no other log.
 
 ```bash
 cd ~/xtoo
-pkill -f "xtoo serve"
 git pull --ff-only
 source .venv/bin/activate
 python -m pip install -e .
-nohup ~/xtoo/.venv/bin/xtoo serve >>~/xtoo.log 2>&1 &
+~/xtoo/scripts/xtoo.sh restart
 ```
 
 Run `python -m pip install -e '.[mcp,vectors]'` instead if you use the
