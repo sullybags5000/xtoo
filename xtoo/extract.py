@@ -49,7 +49,7 @@ DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".pptx"} | EMAIL_EXTENSIONS
 SUPPORTED = TEXT_EXTENSIONS | SCRIPT_EXTENSIONS | MARKUP_EXTENSIONS | DOCUMENT_EXTENSIONS
 
 
-def chunks(path: Path, text_extensions: frozenset | None = None):
+def chunks(path: Path, text_extensions: frozenset | None = None, attachments: int = 0):
     suffix = path.suffix.lower()
     if text_extensions is None:
         text_extensions = frozenset(TEXT_EXTENSIONS | SCRIPT_EXTENSIONS)
@@ -60,7 +60,7 @@ def chunks(path: Path, text_extensions: frozenset | None = None):
         text = decode(path.read_bytes())
         yield html_to_text(text) if suffix in MARKUP_EXTENSIONS else text
     elif suffix in EMAIL_EXTENSIONS:
-        yield from mail.chunks(path)
+        yield from mail.chunks(path, attachments)
     elif suffix == ".pdf":
         from pypdf import PdfReader
 
@@ -109,10 +109,12 @@ def chunks(path: Path, text_extensions: frozenset | None = None):
             raise ValueError(f"Unsupported format: {suffix}")
 
 
-def extract_text(path: Path, limit: int, text_extensions: frozenset | None = None) -> str:
+def extract_text(
+    path: Path, limit: int, text_extensions: frozenset | None = None, attachments: int = 0
+) -> str:
     parts = []
     remaining = limit
-    iterator = chunks(path, text_extensions)
+    iterator = chunks(path, text_extensions, attachments)
     try:
         for part in iterator:
             part = part.replace("\x00", "")[:remaining]
