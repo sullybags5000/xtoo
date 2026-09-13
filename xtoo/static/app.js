@@ -123,11 +123,15 @@ async function search() {
     entity,
     collapse: $("collapse").checked,
     meaning: $("meaning").checked,
+    people: $("people").checked,
+    since: $("since").value,
+    until: $("until").value,
     offset,
     limit,
   });
   $("entity-filter").hidden = !entity;
   $("entity-name").textContent = entity;
+  $("clear-dates").hidden = !$("since").value && !$("until").value;
   clearPreview();
   $("result-count").textContent = "Searching…";
   try {
@@ -280,11 +284,14 @@ $("kind").addEventListener("change", () => {
   offset = 0;
   search();
 });
-$("collapse").addEventListener("change", () => {
-  offset = 0;
-  search();
-});
-$("meaning").addEventListener("change", () => {
+for (const control of ["collapse", "meaning", "people", "since", "until"])
+  $(control).addEventListener("change", () => {
+    offset = 0;
+    search();
+  });
+$("clear-dates").addEventListener("click", () => {
+  $("since").value = "";
+  $("until").value = "";
   offset = 0;
   search();
 });
