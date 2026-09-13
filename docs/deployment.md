@@ -111,16 +111,28 @@ source files. Do not delete the index as routine troubleshooting.
 
 ## Keeping the index current
 
-| Step | How | Automatic? |
-| --- | --- | --- |
-| New and changed files | Background scan on `interval_seconds`, or **Refresh index** | Yes |
-| Dates, conversations, entity links | Derived as each document is indexed | Yes |
-| New mail from Outlook | Re-run the [export](email.md), for example with `-Days 7` | No |
-| Semantic vectors | `~/xtoo/.venv/bin/xtoo embed` | No |
+One command does all of it:
 
-Only the last two need you. New mail is keyword-searchable as soon as it is
-scanned, but invisible to **Meaning** until `xtoo embed` runs again; it is
-incremental, so it only handles what is new.
+```bash
+~/xtoo/.venv/bin/xtoo sync
+```
+
+It runs `sync_command` from your configuration — typically the Windows export —
+then scans, then embeds whatever is new if the index already has vectors. Put it
+on a schedule, or run it when you want to be current.
+
+| Step | How | Covered by `sync` |
+| --- | --- | --- |
+| New mail from Outlook | `sync_command`, for example the export with `-Days 7` | Yes |
+| New and changed files | Background scan, or **Refresh index** | Yes |
+| Dates, conversations, senders, entity links | Derived as each document is indexed | Always |
+| Semantic vectors | `xtoo embed` | Yes, if vectors exist |
+
+Scanning comes in two depths. A quick scan trusts a folder whose timestamp has
+not moved, which finds new and deleted files in seconds on a large export; a full
+scan examines every file and is the only one that notices a file edited in place.
+The background indexer runs quick scans and a full scan every `full_scan_hours`,
+so `interval_seconds` can be minutes rather than a day.
 
 `xtoo migrate` is a one-off for an index built before dates and links existed. It
 never needs running again.
