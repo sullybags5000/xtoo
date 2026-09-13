@@ -68,6 +68,39 @@ def test_semantic_results_group_conversations_too(correspondence):
     assert sum(item["thread_size"] for item in grouped["items"]) == expanded["total"]
 
 
+def test_text_with_no_words_is_never_stored_as_a_vector(library):
+    """A zero vector is equidistant from everything, so it outranks unrelated text."""
+    import re
+
+    pytest.importorskip("sqlite_vec")
+    from xtoo import vectors
+
+    root, _, store, indexer = library
+    (root / "real.txt").write_text("the cluster upgrade failed on node three")
+    # Words, then a run of replacement characters from a failed decode. They survive
+    # stripping, unlike whitespace, and the model cannot tokenise them, so the second
+    # window has no direction at all. This is what a binary-ish file leaves behind.
+    padding = ("word " * 350) + ("\ufffd" * 2000)
+    (root / "padding.txt").write_text(padding)
+    indexer.scan()
+    assert len(vectors.pieces("padding.txt", padding)) == 2
+
+    def encode(texts):
+        # Mirrors the real model: text it cannot tokenise comes back as zeros.
+        return [
+            [0.0] * 256 if not re.search(r"[A-Za-z0-9]", text) else bag_of_words([text])[0]
+            for text in texts
+        ]
+
+    built = vectors.build(store, encode=encode)
+    assert built["documents"] == 2
+    assert built["chunks"] == 2  # three windows in total, one with nothing to embed
+    assert vectors.build(store, encode=encode)["documents"] == 0  # not retried forever
+
+    assert store.search("padding")["total"] == 1, "still indexed and findable by words"
+    assert vectors.pack([0.0] * 256) is None
+
+
 def test_chunking_covers_the_start_of_a_long_document():
     pytest.importorskip("sqlite_vec")
 
