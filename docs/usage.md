@@ -75,7 +75,7 @@ The local API has no authentication and is intended for the bundled UI.
 ```bash
 curl 'http://localhost:8765/api/search?q=budget&limit=10'
 curl 'http://localhost:8765/api/search?entity=PROJ-4821'
-curl 'http://localhost:8765/api/entities?prefix=VX'
+curl 'http://localhost:8765/api/entities?prefix=PR'
 curl http://localhost:8765/api/status
 curl -X POST -H 'X-Xtoo-Request: 1' http://localhost:8765/api/index
 ```
