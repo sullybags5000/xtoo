@@ -39,6 +39,9 @@ def main():
         default=None,
         help="Embedding model name, or a local directory when downloads are blocked",
     )
+    embed.add_argument(
+        "--rebuild", action="store_true", help="Discard existing vectors and start again"
+    )
     commands.add_parser("mcp", help="Serve the index to an MCP client over stdio")
     args = parser.parse_args()
     # Index content is private to this Linux user by default, including SQLite sidecars.
@@ -101,7 +104,12 @@ def main():
             from .store import Store
             from .vectors import MODEL, build
 
-            built = build(Store(settings.data_dir), report=print, model_name=args.model or MODEL)
+            built = build(
+                Store(settings.data_dir),
+                report=print,
+                model_name=args.model or MODEL,
+                rebuild=args.rebuild,
+            )
             print(f"Embedded {built['documents']:,} documents as {built['chunks']:,} chunks.")
             return
         if args.command == "mcp":

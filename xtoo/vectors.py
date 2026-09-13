@@ -10,9 +10,12 @@ import struct
 
 MODEL = "minishlab/potion-base-8M"
 DIMENSIONS = 256
-CHUNK = 1500
-OVERLAP = 150
-MAX_CHUNKS = 4
+CHUNK = 2000
+OVERLAP = 200
+# Nearest-neighbour search scans every stored vector, so each extra window per document
+# is paid on every query. Two windows cover the substance of a message; what follows in
+# a long mail is usually a quoted chain that would only add near-duplicate vectors.
+MAX_CHUNKS = 2
 FUSION_DEPTH = 200
 # Reciprocal rank fusion; 60 is the value from the original formulation.
 FUSION_CONSTANT = 60
@@ -63,15 +66,17 @@ def pack(vector):
     return struct.pack(f"{len(vector)}f", *(float(value) for value in vector))
 
 
+_LOADED = {}
+
+
 def embedder(model_name: str = MODEL):
-    from model2vec import StaticModel
+    """Load the model once per process; it costs most of a second each time."""
+    if model_name not in _LOADED:
+        from model2vec import StaticModel
 
-    model = StaticModel.from_pretrained(model_name)
-
-    def encode(texts):
-        return model.encode(list(texts), show_progress_bar=False)
-
-    return encode
+        model = StaticModel.from_pretrained(model_name)
+        _LOADED[model_name] = lambda texts: model.encode(list(texts), show_progress_bar=False)
+    return _LOADED[model_name]
 
 
 def prepare(db):
@@ -97,12 +102,17 @@ def pending(db) -> int:
     ).fetchone()[0]
 
 
-def build(store, encode=None, report=None, batch: int = 500, model_name: str = MODEL):
+def build(
+    store, encode=None, report=None, batch: int = 500, model_name: str = MODEL, rebuild=False
+):
     """Embed every document that has no current vectors. Safe to interrupt and resume."""
     encode = encode or embedder(model_name)
     documents = chunks = 0
     with store.connect() as db:
         prepare(db)
+        if rebuild:
+            db.execute("DELETE FROM vectors")
+            db.execute("DELETE FROM embedded")
         # Vectors from two different models cannot be compared, so changing the model
         # discards what is there rather than silently mixing them.
         previous = model_of(db)
@@ -119,18 +129,25 @@ def build(store, encode=None, report=None, batch: int = 500, model_name: str = M
         )
         remaining = pending(db)
         # Vectors for documents that have since been removed.
-        for (orphan,) in db.execute(
-            "SELECT document_id FROM embedded WHERE document_id NOT IN (SELECT id FROM documents)"
-        ).fetchall():
-            db.execute("DELETE FROM vectors WHERE document_id = ?", (orphan,))
-            db.execute("DELETE FROM embedded WHERE document_id = ?", (orphan,))
+        orphans = [
+            row[0]
+            for row in db.execute(
+                "SELECT document_id FROM embedded "
+                "WHERE document_id NOT IN (SELECT id FROM documents)"
+            )
+        ]
+        if orphans:
+            marks = ",".join("?" * len(orphans))
+            db.execute(f"DELETE FROM vectors WHERE document_id IN ({marks})", orphans)
+            db.execute(f"DELETE FROM embedded WHERE document_id IN ({marks})", orphans)
     if report:
         report(f"{remaining:,} documents to embed")
     while True:
         with store.connect() as db:
             prepare(db)
             rows = db.execute(
-                """SELECT d.id, d.title, d.content, d.modified_ns FROM documents d
+                """SELECT d.id, d.title, d.content, d.modified_ns,
+                e.document_id IS NOT NULL AS embedded_before FROM documents d
                 LEFT JOIN embedded e ON e.document_id = d.id
                 WHERE e.document_id IS NULL OR e.modified_ns <> d.modified_ns LIMIT ?""",
                 (batch,),
@@ -144,8 +161,13 @@ def build(store, encode=None, report=None, batch: int = 500, model_name: str = M
                     texts.append(piece)
                     owners.append(row["id"])
             vectors = encode(texts) if texts else []
-            for row in rows:
-                db.execute("DELETE FROM vectors WHERE document_id = ?", (row["id"],))
+            # Deleting from a vec0 table scans it, so never delete for a document that
+            # has no vectors yet, and clear the rest in one statement rather than one
+            # scan each. Per-document deletes cost hours over a large index.
+            replacing = [row["id"] for row in rows if row["embedded_before"]]
+            if replacing:
+                marks = ",".join("?" * len(replacing))
+                db.execute(f"DELETE FROM vectors WHERE document_id IN ({marks})", replacing)
             for document_id, vector in zip(owners, vectors):
                 db.execute(
                     "INSERT INTO vectors(document_id, embedding) VALUES (?, ?)",

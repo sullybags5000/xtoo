@@ -63,11 +63,20 @@ safe to interrupt: rerunning continues where it stopped. It also re-embeds docum
 whose text changed and drops vectors for documents that were removed, so running it
 after a scan keeps it current.
 
+Measured on 20,000 mail-sized documents on a laptop CPU:
+
 | Measure | Value |
 | --- | --- |
 | Model | `minishlab/potion-base-8M`, 256 dimensions |
-| Speed | roughly 10,000 windows per second on a laptop CPU |
-| Index growth | roughly 1 KB per window, so about 1 GB for 250,000 documents |
+| Build speed | about 490 documents per second, so roughly 15 minutes for 400,000 |
+| Index growth | about 1.3 KB per document, so roughly 0.5 GB for 400,000 |
+| Query time | about 100 ms at 40,000 vectors, rising to about 1.5 seconds at 850,000 |
+
+Nearest-neighbour search reads every stored vector, so query time grows with the size
+of the library rather than staying flat. That is the cost of having no index server;
+full-text search is unaffected and stays in the low hundreds of milliseconds. Each
+document is embedded as at most two windows to keep that scan half the size it would
+otherwise be.
 
 ## Use
 
@@ -87,7 +96,7 @@ combined ranking automatically when vectors are built.
 
 | Limitation | Detail |
 | --- | --- |
-| Only the start of a document | Four windows of 1,500 characters. A long report's later sections are found by full-text search but not by meaning. |
+| Only the start of a document | Two windows of 2,000 characters. A long report's later sections are found by full-text search but not by meaning. |
 | Static embeddings | Faster than a transformer by orders of magnitude, and correspondingly less precise. Good for recall, not for ranking subtleties. |
 | No filters in the semantic arm | `entity` and conversation grouping apply to full-text results; a semantic query narrows by file type only. |
-| Rebuild after bulk changes | Vectors follow the index, so run `xtoo embed` again after a large scan. |
+| Rebuild after bulk changes | Vectors follow the index, so run `xtoo embed` again after a large scan. `xtoo embed --rebuild` starts from nothing. |
