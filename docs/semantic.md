@@ -87,6 +87,11 @@ vectors exist. From the terminal or an assistant:
 xtoo search --meaning bounce the vcenter daemon
 ```
 
+A document is only offered when it is actually close to the query. Without that
+limit, nearest-neighbour search returns the closest vectors however far away they
+are, so asking about something the library does not contain returned a page of
+unrelated documents rather than nothing.
+
 Results combine the full-text and semantic rankings by reciprocal rank fusion, rather
 than replacing one with the other: an exact keyword match still wins, while a
 paraphrase that full-text search would miss is now reachable. The MCP tools use the
@@ -99,4 +104,4 @@ combined ranking automatically when vectors are built.
 | Only the start of a document | Two windows of 2,000 characters. A long report's later sections are found by full-text search but not by meaning. |
 | Static embeddings | Faster than a transformer by orders of magnitude, and correspondingly less precise. Good for recall, not for ranking subtleties. |
 | No entity filter in the semantic arm | Linking by identifier applies to full-text results; a semantic query narrows by file type, and conversations are grouped as usual. |
-| Rebuild after bulk changes | Vectors follow the index, so run `xtoo embed` again after a large scan. `xtoo embed --rebuild` starts from nothing. |
+| Rebuild after bulk changes | Vectors follow the index, so run `xtoo embed` again after a large scan, or use `xtoo sync`. `xtoo embed --rebuild` starts from nothing. |

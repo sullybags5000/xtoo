@@ -9,7 +9,7 @@ pytest
 git diff --check
 ```
 
-Twenty-eight tests in `tests/test_search.py` cover:
+Thirty-six tests cover:
 
 | Area | What is checked |
 | --- | --- |
@@ -21,6 +21,17 @@ Twenty-eight tests in `tests/test_search.py` cover:
 | Migration | Enriching an index created before those fields existed, including the schema upgrade |
 | Semantic search | Building, resuming, re-embedding changed documents, dropping removed ones, changing model, chunking, grouping |
 | Interfaces | HTTP API guards and endpoints, MCP tools, CLI setup |
+
+| Module | Area |
+| --- | --- |
+| `test_search.py` | Searching and scanning |
+| `test_extract.py` | Formats and encodings |
+| `test_mail.py` | Messages and attachments |
+| `test_enrich.py` | Derived fields, migration, filters across both search paths |
+| `test_vectors.py` | Semantic search |
+| `test_interfaces.py` | HTTP API, browser contract, MCP tools, CLI |
+
+Shared fixtures live in `conftest.py` and synthetic data in `helpers.py`.
 
 Two fixtures deserve mention. `tests/outlook_msg.py` builds a real OLE compound
 file byte by byte, so `.msg` parsing is exercised against the actual binary

@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-09-13
+
+- Added one query description shared by the browser, the terminal and the
+  assistant, so a filter cannot apply to one way of searching and not another.
+- Added date range and automated-sender filtering.
+- Added optional indexing of the text inside mail attachments (`attachment_chars`).
+- Added quick scanning, which trusts folders whose timestamp has not moved, with a
+  full scan every `full_scan_hours`.
+- Added `xtoo sync`, `xtoo backup` and `xtoo index --quick`.
+- Added `assistant_excludes`, bounding what the MCP server can return.
+- Semantic results are now limited by relevance rather than always returning the
+  nearest vectors, and are stored with unit length; existing vectors rebuild once.
+
 
 - Added indexing for scripts and configuration-as-code, including `.ps1`,
   `.psm1`, `.bat`, `.cmd`, `.vbs`, `.sh`, `.py`, `.js`, `.sql`, `.tf`, and

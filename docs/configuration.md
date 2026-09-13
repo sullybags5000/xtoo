@@ -12,10 +12,22 @@ file. See [config.example.toml](../config.example.toml).
 | `max_file_mb` | No | `25` | Files larger than this are skipped; minimum `1`. | `50` |
 | `excluded_dirs` | No | `.git`, `.venv`, `venv`, `node_modules`, `AppData`, `$Recycle.Bin`, `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox`, `site-packages`, `.terraform`, `.idea`, `.vs` | Directory names excluded during traversal. Setting the key replaces the whole default list. | `['.git', 'node_modules']` |
 | `extra_text_extensions` | No | empty | Additional extensions read as plain text. Case and a leading dot are normalised. | `['.go', '.java']` |
+| `attachment_chars` | No | `0` | Characters to read from inside each mail attachment. `0` indexes filenames only. | `4000` |
+| `full_scan_hours` | No | `24` | How often the background scan examines every file rather than only changed folders. | `12` |
+| `sync_command` | No | empty | Command `xtoo sync` runs before scanning, typically a Windows export. | `'powershell.exe -File C:\\export.ps1'` |
+| `assistant_excludes` | No | empty | Path fragments an [assistant](assistant.md) may not read, even when asked. | `['/Personal/']` |
 
 Fixed limits are one million extracted characters per document, 100 MB expanded
-Office archive size, and 100,000 characters returned in a preview. These are
-code constants, not TOML keys.
+Office archive size, 25 MB per mail attachment, and 100,000 characters returned
+in a preview. These are code constants, not TOML keys.
+
+> [!WARNING]
+> `sync_command` is run by a shell. It is your own configuration file, but treat
+> it as you would a line in `~/.bashrc`, and keep the file private.
+
+> [!IMPORTANT]
+> `assistant_excludes` bounds what the [MCP server](assistant.md) can return. It
+> does not restrict the browser or the terminal, which search everything indexed.
 
 ## Indexed file types
 

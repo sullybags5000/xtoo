@@ -28,10 +28,22 @@ body. HTML bodies are reduced to text, and `<script>` and `<style>` content is
 dropped. Sender addresses, recipient names, and attachment filenames are all
 searchable.
 
+Attachment filenames are always indexed. Their *contents* can be too:
+
+```toml
+attachment_chars = 4000
+```
+
+With that set, the text inside each attachment is read by the same extractors
+used for ordinary files — a PDF runbook, an Office document, a log — up to that
+many characters each. It is off by default because turning it on means
+re-indexing every message and a larger index, and it is worth it exactly when the
+answers you need live in attachments rather than in message bodies.
+
 > [!NOTE]
-> Attachment *filenames* are indexed; attachment *contents* are not. An
-> attachment is never opened, decoded, or executed. To search inside attachments,
-> save them as files into an indexed folder.
+> Images and archives are listed by name only and never decoded, an attached
+> message is not expanded, and an attachment larger than 25 MB is skipped. One
+> unreadable attachment never costs the message it arrived with.
 
 ## Using an export you already have
 

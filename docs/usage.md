@@ -21,7 +21,10 @@ files, and indexing issues.
 | `xtoo serve` | Local UI on `127.0.0.1:8765` until Ctrl+C. |
 | `xtoo serve --port 8766` | Uses a port from 1024 through 65535. |
 | `xtoo --config PATH serve` | Uses an explicit TOML file. |
-| `xtoo search WORDS` | Searches from the terminal; `--kind`, `--entity`, `--limit`, `--expand`, `--meaning`, `--json`. |
+| `xtoo search WORDS` | Searches from the terminal; `--kind`, `--entity`, `--since`, `--until`, `--people`, `--limit`, `--expand`, `--meaning`, `--json`. |
+| `xtoo sync` | Runs `sync_command`, scans, then embeds what is new. |
+| `xtoo index --quick` | Scans only folders whose timestamp has moved. |
+| `xtoo backup FILE` | Writes a consistent copy of the index while the server runs. |
 | `xtoo migrate` | Derives dates, conversations and entity links for documents indexed earlier. |
 | `xtoo embed` | Builds [semantic](semantic.md) vectors; `--model`, `--rebuild`. Needs the `vectors` extra. |
 | `xtoo mcp` | Serves the index to an [MCP client](assistant.md) over stdio. |
@@ -45,6 +48,12 @@ library the conversation count is capped at that while the document count beside
 stays exact. The alternative would be a grouping pass over every match on each
 keystroke.
 
+Dates and senders can narrow a search as well. **From** and **to** in the search
+bar bound when a document is from, using the message date for mail and the file
+timestamp for everything else. **People only** sets aside mail from automated
+senders — trackers, wikis, build systems — which on a work mailbox is most of it
+by volume and almost none of it by interest.
+
 Documents are also linked by the identifiers they mention — tracker references such as
 `PROJ-4821`, correspondents as written in mail headers, and email addresses. Selecting
 a result lists its links, and choosing one shows every document that mentions it,
@@ -66,7 +75,7 @@ The local API has no authentication and is intended for the bundled UI.
 
 | Endpoint | Inputs | Response |
 | --- | --- | --- |
-| `GET /api/search` | `q`, `kind`, `offset`, `limit` (`limit` 1–100), `entity`, `collapse`, `meaning` | Results and pagination fields |
+| `GET /api/search` | `q`, `kind`, `offset`, `limit` (`limit` 1–100), `entity`, `collapse`, `meaning`, `people`, `since`, `until` | Results and pagination fields |
 | `GET /api/entities` | `prefix` (empty lists the most mentioned) | Identifiers with document counts |
 | `GET /api/documents/{id}` | Numeric ID | Metadata and up to 100,000 characters |
 | `GET /api/status` | None | Scan state, counts, folders, errors, whether semantic search is ready |

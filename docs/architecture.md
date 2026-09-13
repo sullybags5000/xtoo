@@ -20,7 +20,8 @@ flowchart LR
 | `xtoo/extract.py` | Extension groups and text extraction; scripts are read, never executed |
 | `xtoo/mail.py` | Exported `.msg` and `.eml` messages; headers, attachment names, body |
 | `xtoo/text.py` | Shared byte decoding and HTML-to-text helpers |
-| `xtoo/enrich.py` | Dates, conversation keys and entities derived from indexed text |
+| `xtoo/query.py` | What a search asks for, and the one place deciding how to answer |
+| `xtoo/enrich.py` | Dates, conversations, automated senders and entities derived from text |
 | `xtoo/migrate.py` | Backfills those fields for documents indexed earlier |
 | `xtoo/store.py` | SQLite schema, FTS5 index, entity links, searches, previews |
 | `xtoo/vectors.py` | Optional local embeddings and combined ranking (`sqlite-vec`) |

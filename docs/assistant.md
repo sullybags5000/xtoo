@@ -50,6 +50,21 @@ It should exit silently. An `ImportError` means the `mcp` extra is not installed
 | `find_by_entity` | Every document linked to a ticket reference, a person or an address, across mail, scripts and documents together. |
 | `list_entities` | Identifiers beginning with some text, with how many documents mention each, for finding the exact spelling before `find_by_entity`. |
 
+`search_documents` also takes `since` and `until` as `YYYY-MM-DD`, and uses
+semantic search automatically when vectors are built, except for an exact
+identifier where it would add nothing.
+
+## Keeping folders private
+
+```toml
+assistant_excludes = ["/Personal/", "/Private/"]
+```
+
+Any indexed path containing one of those fragments is invisible to every tool
+here, even if the assistant is asked for it directly. The browser and the
+terminal are unaffected: this bounds what leaves the machine, not what you can
+find yourself.
+
 The useful shape of a question is "what did we decide about X", "what has this ticket
 touched", or "what did this person send me about Y". The assistant searches, reads the
 promising results, and answers from them.

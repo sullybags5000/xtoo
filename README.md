@@ -30,10 +30,14 @@ opened. Add further plain-text extensions with `extra_text_extensions`.
 - **One index for everything.** A hostname or an error string finds the script
   that sets it, the document that describes it and the mail thread that argued
   about it, in one result list.
-- **Real message dates.** Exported mail is dated by when it was sent, not by when
-  the export tool wrote the file, so results sort by when things happened.
+- **Real message dates**, and filtering by them. Exported mail is dated by when it
+  was sent, not by when the export tool wrote the file, so results sort and narrow
+  by when things happened.
 - **Conversations.** Replies and forwards collapse to one row with a message
-  count, which matters when a tracker sends an update per comment.
+  count, which matters when a tracker sends an update per comment. Automated
+  senders are marked, so correspondence can be searched without them.
+- **Attachment text**, optional. A PDF, Office file or log inside a message is
+  read by the same extractors as any other document.
 - **Entity links.** Documents are linked by the identifiers they mention —
   tracker references, correspondents, addresses — so one click assembles
   everything touching a ticket or a person, across file types.
@@ -42,11 +46,14 @@ opened. Add further plain-text extensions with `extra_text_extensions`.
   rather than replacing it. See [Semantic search](docs/semantic.md).
 - **Assistant access**, optional. A read-only MCP server lets a client such as
   Claude Code search and read the index. See [Assistant](docs/assistant.md).
-- **Terminal search.** `xtoo search WORDS`, with `--kind`, `--entity`,
-  `--meaning` and `--json`.
+- **Terminal search.** `xtoo search WORDS`, with `--kind`, `--entity`, `--since`,
+  `--until`, `--people`, `--meaning` and `--json`.
+- **One command to catch up.** `xtoo sync` exports, scans and embeds.
 
-Scanning is incremental: unchanged files are skipped, deleted files are removed,
-and an unreachable folder keeps its cached results rather than emptying them.
+Scanning is incremental twice over: a quick scan trusts folders whose timestamp
+has not moved, a full scan examines every file, unchanged files are skipped,
+deleted files are removed, and an unreachable folder keeps its cached results
+rather than emptying them.
 
 > [!NOTE]
 > Xtoo indexes local folders only. Mail is indexed from `.msg` and `.eml` files
