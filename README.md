@@ -36,4 +36,4 @@ index contains extracted text and paths under `~/.local/share/xtoo` by default;
 it is not encrypted by Xtoo. Do not put work documents, credentials, or the
 index in Git. The repository has no declared open-source license.
 
-Last verified against commit `3bc7ff8`.
+Last verified against commit `5aafcd1`.
