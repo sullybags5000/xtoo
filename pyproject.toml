@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.9,<1"]
+mcp = ["mcp>=2,<3"]
 
 [project.scripts]
 xtoo = "xtoo.cli:main"

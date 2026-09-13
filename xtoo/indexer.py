@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .config import Settings
+from .enrich import enrichment
 from .extract import extract_text
 from .store import Store
 
@@ -126,14 +127,16 @@ class Indexer:
                                 raise ValueError(
                                     "File changed during extraction; will retry next scan"
                                 )
+                            kind = path.suffix.lower()[1:]
                             self.store.upsert(
                                 path=key,
                                 root=str(root),
                                 title=path.name,
-                                kind=path.suffix.lower()[1:],
+                                kind=kind,
                                 modified_ns=stat.st_mtime_ns,
                                 size=stat.st_size,
                                 content=content,
+                                **enrichment(content, path.name, kind, stat.st_mtime_ns),
                             )
                             counters["indexed"] += 1
                         except Exception as exc:

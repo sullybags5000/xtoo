@@ -1,17 +1,21 @@
 import json
 import os
+import sqlite3
 import struct
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from outlook_msg import build as build_msg
 
-from xtoo import mail
+from xtoo import mail, mcp_server
 from xtoo.config import Settings, load_settings
+from xtoo.enrich import entities, thread_key
 from xtoo.extract import extract_text
 from xtoo.indexer import Indexer
+from xtoo.migrate import enrich_documents
 from xtoo.store import Store
 from xtoo.web import create_app
 
@@ -247,6 +251,151 @@ def test_received_dates_report_export_coverage(tmp_path):
     undated.write_bytes(b"Subject: hi\r\n\r\nbody\r\n")
     assert mail.received(undated) is None
     assert mail.received(tmp_path / "export.msg") is not None
+
+
+def conversation(root, name, subject, body, when, to="Ford, Alex; Lee, Sam"):
+    epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+    ticks = int((when - epoch).total_seconds() * 10_000_000)
+    (root / name).write_bytes(
+        build_msg(
+            {
+                "__substg1.0_0037001F": utf16(subject),
+                "__substg1.0_0C1A001F": utf16("Jane Doe"),
+                "__substg1.0_5D01001F": utf16("jane.doe@example.com"),
+                "__substg1.0_0E04001F": utf16(to),
+                "__substg1.0_1000001F": utf16(body),
+                "__properties_version1.0": b"\x00" * 32 + struct.pack("<IIQ", 0x0E060040, 6, ticks),
+            }
+        )
+    )
+
+
+@pytest.fixture
+def correspondence(library):
+    root, settings, store, indexer = library
+    moment = datetime(2026, 3, 2, 9, 0, tzinfo=timezone.utc)
+    conversation(root, "a.msg", "[JIRA] (PROJ-4821) Upgrade fails", "First report", moment)
+    conversation(
+        root,
+        "b.msg",
+        "RE: [JIRA] (PROJ-4821) Upgrade fails",
+        "Root cause",
+        moment.replace(month=4),
+    )
+    conversation(
+        root,
+        "c.msg",
+        "FW: RE: [JIRA] (PROJ-4821) Upgrade fails",
+        "Over to you",
+        moment.replace(month=5),
+    )
+    conversation(root, "d.msg", "Lab notice", "UTF-8 and SHA-1 are not tickets", moment)
+    (root / "fix.sh").write_text("#!/bin/bash\n# workaround for PROJ-4821\nrestart vpxd\n")
+    indexer.scan()
+    return root, settings, store, indexer
+
+
+def test_message_dates_replace_file_timestamps(correspondence):
+    _, _, store, _ = correspondence
+    dates = {
+        item["title"]: datetime.fromtimestamp(item["document_ns"] / 1e9, timezone.utc).date()
+        for item in store.search()["items"]
+    }
+    assert str(dates["a.msg"]) == "2026-03-02"
+    assert str(dates["c.msg"]) == "2026-05-02"
+    # A file with no message date keeps its filesystem timestamp.
+    assert dates["fix.sh"] >= datetime(2025, 1, 1).date()
+    assert [item["title"] for item in store.search()["items"]][:2] == ["fix.sh", "c.msg"]
+
+
+def test_replies_collapse_into_one_conversation(correspondence):
+    _, _, store, _ = correspondence
+    assert store.search("upgrade")["total"] == 3
+    collapsed = store.search("upgrade", collapse=True)
+    assert collapsed["total"] == 1
+    assert collapsed["items"][0]["thread_size"] == 3
+    # Documents outside a conversation are never merged together.
+    assert store.search(collapse=True)["total"] == 3
+    assert thread_key("Subject: RE: FW: Budget\n", "x.msg", "msg") == "budget"
+    assert thread_key("Subject: Hi\n", "x.msg", "txt") == ""
+
+
+def test_entities_link_mail_and_scripts(correspondence):
+    _, _, store, _ = correspondence
+    linked = store.search(entity="PROJ-4821")
+    assert {item["title"] for item in linked["items"]} == {"a.msg", "b.msg", "c.msg", "fix.sh"}
+    assert store.search(entity="Lee, Sam")["total"] == 4
+    assert store.search(entity="jane.doe@example.com")["total"] == 4
+    assert store.entities("PROJ")[0] == {"kind": "ticket", "name": "PROJ-4821", "count": 4}
+    assert store.entities("%") == []  # wildcards are escaped, not interpreted
+    found = {name for _, name in entities("UTF-8 SHA-1 PDF-2 see OPS-77", "txt")}
+    assert found == {"OPS-77"}
+
+
+def test_mcp_tools_search_read_and_link(correspondence):
+    _, _, store, _ = correspondence
+    found = mcp_server.search(store, "upgrade", limit=5)
+    assert found["total"] == 1 and found["results"][0]["messages_in_conversation"] == 3
+    assert found["results"][0]["date"] == "2026-03-02"
+    document = mcp_server.read(store, found["results"][0]["id"], max_characters=200)
+    assert "ticket:PROJ-4821" in document["entities"] and document["truncated"] is False
+    assert mcp_server.by_entity(store, "PROJ-4821")["total"] == 4
+    assert "ticket:PROJ-4821 (4)" in mcp_server.names(store, "PROJ")["names"]
+    assert mcp_server.read(store, 99999)["error"]
+
+
+def test_migrate_enriches_an_index_built_before_enrichment(tmp_path):
+    directory = tmp_path / "index"
+    directory.mkdir()
+    legacy = sqlite3.connect(directory / "index.sqlite3")
+    legacy.executescript(
+        """CREATE TABLE documents (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
+        root TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL, modified_ns INTEGER NOT NULL,
+        size INTEGER NOT NULL, content TEXT NOT NULL);
+        CREATE VIRTUAL TABLE search_index USING fts5(title, content, content='documents',
+        content_rowid='id');
+        CREATE TRIGGER documents_insert AFTER INSERT ON documents BEGIN
+        INSERT INTO search_index(rowid, title, content) VALUES (new.id, new.title, new.content);
+        END;"""
+    )
+    legacy.execute(
+        "INSERT INTO documents(path, root, title, kind, modified_ns, size, content) "
+        "VALUES ('/m/one.msg', '/m', 'one.msg', 'msg', 1700000000000000000, 10, ?)",
+        (
+            "Subject: RE: Cluster upgrade\nFrom: Jane Doe <jane.doe@example.com>\n"
+            "To: Lee, Sam\nDate: 2026-03-02 09:00 UTC\nSee PROJ-4821 for detail.",
+        ),
+    )
+    legacy.commit()
+    legacy.close()
+
+    store = Store(directory)  # opening an old index adds the new columns
+    before = store.search("cluster")["items"][0]
+    assert before["document_ns"] == 1700000000000000000  # falls back to the file timestamp
+    assert enrich_documents(store) == 1
+    after = store.search("cluster")["items"][0]
+    assert datetime.fromtimestamp(after["document_ns"] / 1e9, timezone.utc).date().isoformat() == (
+        "2026-03-02"
+    )
+    assert after["thread"] == "cluster upgrade"
+    assert store.search(entity="PROJ-4821")["total"] == 1
+    assert enrich_documents(store) == 0  # nothing left to do on a second run
+
+
+def test_api_exposes_conversations_and_entity_links(correspondence):
+    _, settings, _, _ = correspondence
+    with TestClient(create_app(settings, background=False), base_url="http://localhost") as client:
+        grouped = client.get("/api/search", params={"q": "upgrade", "collapse": "true"}).json()
+        assert grouped["total"] == 1
+        assert grouped["items"][0]["thread_size"] == 3
+        assert client.get("/api/search", params={"q": "upgrade"}).json()["total"] == 3
+        linked = client.get("/api/search", params={"entity": "PROJ-4821"}).json()
+        assert linked["total"] == 4
+        names = client.get("/api/entities", params={"prefix": "PROJ"}).json()["items"]
+        assert names[0] == {"kind": "ticket", "name": "PROJ-4821", "count": 4}
+        assert client.get("/api/entities").json()["items"]  # no prefix browses the busiest
+        document = client.get(f"/api/documents/{linked['items'][0]['id']}").json()
+        assert {"kind": "ticket", "name": "PROJ-4821"} in document["entities"]
 
 
 def test_configuration_validation_and_nested_roots(tmp_path):

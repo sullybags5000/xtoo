@@ -59,7 +59,14 @@
         <select id="kind">
           <option value="">All file types</option>
         </select>
+        <label class="toggle" for="collapse"
+          ><input id="collapse" type="checkbox" checked /> Group replies</label
+        >
       </section>
+      <div id="entity-filter" class="entity-filter" hidden>
+        <span>Linked to</span><code id="entity-name"></code
+        ><button id="entity-clear" class="secondary">Clear link</button>
+      </div>
       <div class="status-row">
         <span id="result-count" role="status" aria-live="polite"
           >Loading your library…</span
@@ -96,6 +103,7 @@
               <code id="preview-path"></code
               ><button id="copy-path" class="secondary">Copy path</button>
             </div>
+            <div id="preview-entities" class="entities"></div>
             <p id="preview-warning" class="hint"></p>
             <pre id="preview-content"></pre>
           </article>
