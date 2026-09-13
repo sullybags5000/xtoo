@@ -45,10 +45,23 @@ class Indexer:
     def _loop(self):
         while not self._stop.is_set():
             self._wake.clear()
-            self.scan()
+            self.scan(full=self._full_due())
             self._wake.wait(self.settings.interval_seconds)
 
-    def scan(self):
+    def _full_due(self) -> bool:
+        """A full scan is due if one has not finished within the configured window."""
+        last = self.store.recall("last_full_scan")
+        try:
+            return (time.time() - float(last)) > self.settings.full_scan_hours * 3600
+        except ValueError:
+            return True
+
+    def scan(self, full: bool = True):
+        """Look for work. A full scan examines every file; a quick one trusts a folder
+        whose timestamp has not moved, which is what makes scanning a large export
+        cheap enough to repeat often. A folder's timestamp changes when files are added
+        or removed but not when one is edited, so a full scan still has to happen
+        regularly; the background loop arranges that."""
         if not self._scan_lock.acquire(blocking=False):
             return self.status()
         started = time.monotonic()
@@ -77,6 +90,8 @@ class Indexer:
                     )
                     continue
                 old = self.store.inventory(str(root))
+                known_times = {} if full else self.store.folder_times(str(root))
+                folder_times = {}
                 seen = set()
                 walk_failed = False
 
@@ -97,6 +112,18 @@ class Indexer:
                             and (Path(current) / d).resolve() != self.settings.data_dir
                         )
                     )
+                    try:
+                        folder_times[current] = os.stat(current).st_mtime_ns
+                    except OSError as exc:
+                        folder_times.pop(current, None)
+                        error(current, exc)
+                    if known_times.get(current, -1) == folder_times.get(current, -2):
+                        # Nothing was added or removed here since the last full scan.
+                        unchanged = self.store.paths_under(str(root), current)
+                        seen.update(unchanged)
+                        counters["unchanged"] += len(unchanged)
+                        self._update(**counters)
+                        continue
                     for name in sorted(files):
                         if self._stop.is_set():
                             break
@@ -152,9 +179,12 @@ class Indexer:
                     missing = old.keys() - seen
                     self.store.remove(missing)
                     counters["removed"] += len(missing)
+                    self.store.record_folders(str(root), folder_times)
         except Exception as exc:
             error("Index", exc)
         finally:
+            if full and not self._stop.is_set():
+                self.store.remember("last_full_scan", time.time())
             self._update(
                 running=False,
                 last_finished=datetime.now(timezone.utc).isoformat(),
