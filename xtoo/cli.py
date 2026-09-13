@@ -33,7 +33,12 @@ def main():
         "--meaning", action="store_true", help="Combine full-text with semantic search"
     )
     commands.add_parser("migrate", help="Backfill dates, conversations and entities in the index")
-    commands.add_parser("embed", help="Build semantic vectors for the index")
+    embed = commands.add_parser("embed", help="Build semantic vectors for the index")
+    embed.add_argument(
+        "--model",
+        default=None,
+        help="Embedding model name, or a local directory when downloads are blocked",
+    )
     commands.add_parser("mcp", help="Serve the index to an MCP client over stdio")
     args = parser.parse_args()
     # Index content is private to this Linux user by default, including SQLite sidecars.
@@ -94,9 +99,9 @@ def main():
             return
         if args.command == "embed":
             from .store import Store
-            from .vectors import build
+            from .vectors import MODEL, build
 
-            built = build(Store(settings.data_dir), report=print)
+            built = build(Store(settings.data_dir), report=print, model_name=args.model or MODEL)
             print(f"Embedded {built['documents']:,} documents as {built['chunks']:,} chunks.")
             return
         if args.command == "mcp":

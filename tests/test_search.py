@@ -440,6 +440,24 @@ def test_semantic_vectors_build_resume_and_rank(correspondence):
     assert script not in vectors.similar(store, "restart vpxd", encode=bag_of_words)
 
 
+def test_changing_the_embedding_model_rebuilds_every_vector(correspondence):
+    pytest.importorskip("sqlite_vec")
+    from xtoo import vectors
+
+    _, _, store, _ = correspondence
+    vectors.build(store, encode=bag_of_words, model_name="first/model")
+    with store.connect() as db:
+        vectors.prepare(db)
+        assert vectors.model_of(db) == "first/model"
+    assert vectors.build(store, encode=bag_of_words, model_name="first/model")["documents"] == 0
+    # Vectors from two models are not comparable, so the index is rebuilt, not mixed.
+    rebuilt = vectors.build(store, encode=bag_of_words, model_name="second/model")
+    assert rebuilt["documents"] == 5
+    with store.connect() as db:
+        vectors.prepare(db)
+        assert vectors.model_of(db) == "second/model"
+
+
 def test_chunking_covers_the_start_of_a_long_document():
     pytest.importorskip("sqlite_vec")
     from xtoo import vectors

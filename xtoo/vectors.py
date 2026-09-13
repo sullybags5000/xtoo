@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS embedded (
     modified_ns INTEGER NOT NULL,
     chunks INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS vector_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -83,6 +84,12 @@ def prepare(db):
     return db
 
 
+def model_of(db) -> str:
+    """The model the stored vectors were built with, which queries must match."""
+    row = db.execute("SELECT value FROM vector_settings WHERE key = 'model'").fetchone()
+    return row[0] if row else ""
+
+
 def pending(db) -> int:
     return db.execute(
         """SELECT COUNT(*) FROM documents d LEFT JOIN embedded e ON e.document_id = d.id
@@ -96,6 +103,20 @@ def build(store, encode=None, report=None, batch: int = 500, model_name: str = M
     documents = chunks = 0
     with store.connect() as db:
         prepare(db)
+        # Vectors from two different models cannot be compared, so changing the model
+        # discards what is there rather than silently mixing them.
+        previous = model_of(db)
+        if not previous and db.execute("SELECT COUNT(*) FROM embedded").fetchone()[0]:
+            # Vectors built before the model was recorded came from the default.
+            previous = MODEL
+        if previous and previous != model_name:
+            if report:
+                report(f"Model changed from {previous}; rebuilding every vector")
+            db.execute("DELETE FROM vectors")
+            db.execute("DELETE FROM embedded")
+        db.execute(
+            "INSERT OR REPLACE INTO vector_settings(key, value) VALUES ('model', ?)", (model_name,)
+        )
         remaining = pending(db)
         # Vectors for documents that have since been removed.
         for (orphan,) in db.execute(
@@ -141,9 +162,12 @@ def build(store, encode=None, report=None, batch: int = 500, model_name: str = M
             report(f"  embedded {documents:,} of {remaining:,}")
 
 
-def similar(store, query: str, limit: int = FUSION_DEPTH, encode=None, model_name: str = MODEL):
+def similar(store, query: str, limit: int = FUSION_DEPTH, encode=None, model_name: str = ""):
     """Document ids ordered by how close their closest chunk is to the query."""
-    encode = encode or embedder(model_name)
+    if encode is None:
+        with store.connect() as db:
+            prepare(db)
+            encode = embedder(model_name or model_of(db) or MODEL)
     vector = pack(encode([query])[0])
     with store.connect() as db:
         prepare(db)
@@ -168,7 +192,7 @@ def fuse(*rankings):
     return sorted(scores, key=lambda document_id: -scores[document_id])
 
 
-def search(store, query="", kind="", offset=0, limit=40, encode=None, model_name: str = MODEL):
+def search(store, query="", kind="", offset=0, limit=40, encode=None, model_name: str = ""):
     """Full-text and vector results combined by reciprocal rank fusion."""
     lexical = store.search(query, kind=kind, limit=FUSION_DEPTH)
     snippets = {item["id"]: item["snippet"] for item in lexical["items"]}

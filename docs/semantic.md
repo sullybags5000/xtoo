@@ -18,8 +18,44 @@ xtoo embed
 ```
 
 The first run downloads the embedding model (about 30 MB) from Hugging Face; after
-that it is cached and no network is needed. If your network blocks that download, the
-rest of Xtoo is unaffected.
+that it is cached under `~/.cache/huggingface` and no network is needed again. Nothing
+else in Xtoo makes a network call, and a blocked download leaves the rest unaffected.
+
+### When the download is intercepted
+
+A managed network that inspects TLS presents its own certificate, which Python does not
+trust by default, so the download fails with `CERTIFICATE_VERIFY_FAILED` even though
+the site is reachable. Check before running a long job:
+
+```bash
+python -c "import huggingface_hub as h; print(h.hf_hub_download('minishlab/potion-base-8M', 'config.json'))"
+```
+
+A path means you are fine. A certificate error means Python needs your organisation's
+root certificate, which your IT department can supply as a `.crt` or `.pem` file:
+
+```bash
+export SSL_CERT_FILE=/path/to/corporate-root.pem
+export REQUESTS_CA_BUNDLE=/path/to/corporate-root.pem
+xtoo embed
+```
+
+Both variables are set because different libraries read different ones. Add them to
+`~/.bashrc` to keep them. Do not disable certificate verification instead; that hides
+real failures and is usually against policy.
+
+### Fully offline
+
+If the download cannot be made to work, fetch the model elsewhere and copy the folder
+in, then name the directory instead of the model:
+
+```bash
+xtoo embed --model /home/YOUR_LINUX_USER/models/potion-base-8M
+```
+
+The model is recorded in the index, so searches use the same one automatically and
+`--model` is not needed again. Naming a different model later rebuilds every vector,
+because vectors from two models cannot be compared.
 
 `xtoo embed` reads documents from the index rather than from disk, embeds the first
 6,000 characters of each as up to four overlapping windows, and reports progress. It is
