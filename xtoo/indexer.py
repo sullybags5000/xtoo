@@ -117,7 +117,10 @@ class Indexer:
                                 counters["unchanged"] += 1
                                 continue
                             content = extract_text(
-                                path, self.settings.max_text_chars, text_extensions
+                                path,
+                                self.settings.max_text_chars,
+                                text_extensions,
+                                self.settings.attachment_chars,
                             )
                             after = path.stat()
                             if (after.st_mtime_ns, after.st_size) != (

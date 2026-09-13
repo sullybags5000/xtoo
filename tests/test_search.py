@@ -212,6 +212,65 @@ def test_outlook_msg_extraction_and_search(library):
     assert store.search("cluster", "msg")["total"] == 1
 
 
+def test_msg_attachment_text_is_indexed_when_asked(tmp_path):
+    from xtoo.extract import extract_text
+
+    message = tmp_path / "with-attachment.msg"
+    message.write_bytes(
+        build_msg(
+            {
+                "__substg1.0_0037001F": utf16("Logs from the failed run"),
+                "__substg1.0_1000001F": utf16("See attached."),
+                "__attach_version1.0_#00000000": {
+                    "__substg1.0_3707001F": utf16("node3.log"),
+                    "__substg1.0_37010102": b"heap allocation failed on node3",
+                },
+                "__attach_version1.0_#00000001": {
+                    "__substg1.0_3707001F": utf16("screenshot.png"),
+                    "__substg1.0_37010102": b"\x89PNG\r\n not really an image",
+                },
+            }
+        )
+    )
+    # Off by default: filenames only, as before.
+    plain = extract_text(message, 5000)
+    assert "Attachments: node3.log, screenshot.png" in plain
+    assert "heap allocation" not in plain
+
+    opened = extract_text(message, 20000, attachments=4000)
+    assert "Attachment node3.log:" in opened
+    assert "heap allocation failed on node3" in opened
+    # An image is named, never decoded, and an unreadable one costs nothing.
+    assert "Attachment screenshot.png:" not in opened
+
+
+def test_eml_attachment_is_parsed_by_its_own_extractor(tmp_path):
+    import base64
+
+    from docx import Document
+
+    from xtoo.extract import extract_text
+
+    written = Document()
+    written.add_paragraph("The lockbox was empty during the upgrade")
+    document = tmp_path / "report.docx"
+    written.save(document)
+    encoded = base64.encodebytes(document.read_bytes())
+
+    message = tmp_path / "reply.eml"
+    message.write_bytes(
+        b"From: Lee, Sam <sam@example.com>\r\nSubject: Report\r\n"
+        b'Content-Type: multipart/mixed; boundary="b1"\r\n\r\n--b1\r\n'
+        b"Content-Type: text/plain\r\n\r\nAttached.\r\n--b1\r\n"
+        b'Content-Disposition: attachment; filename="report.docx"\r\n'
+        b"Content-Transfer-Encoding: base64\r\n\r\n" + encoded + b"\r\n--b1--\r\n"
+    )
+    assert "lockbox" not in extract_text(message, 5000)
+    opened = extract_text(message, 20000, attachments=4000)
+    assert "Attachment report.docx:" in opened
+    assert "The lockbox was empty during the upgrade" in opened
+
+
 def test_eml_extraction_and_unreadable_message(library):
     root, _, store, indexer = library
     (root / "reply.eml").write_bytes(

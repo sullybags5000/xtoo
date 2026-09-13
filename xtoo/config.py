@@ -31,6 +31,7 @@ class Settings:
     interval_seconds: int = 300
     max_file_mb: int = 25
     max_text_chars: int = 1_000_000
+    attachment_chars: int = 0
     excluded_dirs: tuple[str, ...] = (
         ".git",
         ".venv",
@@ -70,6 +71,7 @@ def load_settings(path: Path) -> Settings:
         "max_file_mb",
         "excluded_dirs",
         "extra_text_extensions",
+        "attachment_chars",
     }
     if unknown := raw.keys() - allowed:
         raise ValueError(f"Unknown configuration options: {', '.join(sorted(unknown))}")
@@ -85,7 +87,11 @@ def load_settings(path: Path) -> Settings:
     paths = tuple(
         p for p in paths if not any(p != other and p.is_relative_to(other) for other in paths)
     )
-    for key, default, minimum in (("interval_seconds", 300, 10), ("max_file_mb", 25, 1)):
+    for key, default, minimum in (
+        ("interval_seconds", 300, 10),
+        ("max_file_mb", 25, 1),
+        ("attachment_chars", 0, 0),
+    ):
         value = raw.get(key, default)
         if type(value) is not int or value < minimum:
             raise ValueError(f"{key} must be an integer of at least {minimum}.")
@@ -109,4 +115,5 @@ def load_settings(path: Path) -> Settings:
         max_file_mb=raw.get("max_file_mb", 25),
         excluded_dirs=tuple(excludes),
         extra_text_extensions=extras,
+        attachment_chars=raw.get("attachment_chars", 0),
     )

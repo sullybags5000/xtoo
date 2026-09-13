@@ -19,6 +19,30 @@ DISPLAY_CC = "0E03"
 BODY = "1000"
 HTML_BODY = "1013"
 ATTACH_NAME = "__substg1.0_3707"
+ATTACH_DATA = "__substg1.0_3701"
+# Formats worth reading inside a message. Images and archives are listed by name only,
+# and an attached message is left alone rather than expanded.
+ATTACHMENT_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".pptx",
+    ".txt",
+    ".log",
+    ".csv",
+    ".tsv",
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".md",
+    ".htm",
+    ".html",
+    ".ini",
+    ".cfg",
+    ".conf",
+}
+MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 PROPERTIES = "__properties_version1.0"
 DELIVERY_TIME = 0x0E060040
 SUBMIT_TIME = 0x00390040
@@ -116,7 +140,33 @@ def message_chunks(listing, read):
     yield value(BODY) or html_to_text(value(HTML_BODY))
 
 
-def outlook_chunks(path: Path):
+def attachment_text(name: str, data: bytes, limit: int):
+    """Text inside one attachment, read through the ordinary extractors.
+
+    The parsers take a path, so the bytes are written to a private temporary file and
+    removed immediately. Nothing is executed and the file is never opened by anything
+    but Xtoo's own extraction.
+    """
+    import tempfile
+
+    from .extract import extract_text
+
+    suffix = Path(name).suffix.lower()
+    if suffix not in ATTACHMENT_EXTENSIONS or not data or len(data) > MAX_ATTACHMENT_BYTES:
+        return ""
+    handle = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        handle.write(data)
+        handle.close()
+        return extract_text(Path(handle.name), limit)
+    except Exception:
+        # One unreadable attachment must not cost the message it arrived with.
+        return ""
+    finally:
+        Path(handle.name).unlink(missing_ok=True)
+
+
+def outlook_chunks(path: Path, attachments: int = 0):
     import olefile
 
     with olefile.OleFileIO(path) as container:
@@ -126,9 +176,23 @@ def outlook_chunks(path: Path):
                 return stream.read()
 
         yield from message_chunks(container.listdir(), read)
+        if attachments <= 0:
+            return
+        entries = {tuple(part.lower() for part in entry): entry for entry in container.listdir()}
+        for key, entry in sorted(entries.items()):
+            if len(key) != 2 or not key[1].startswith(ATTACH_DATA):
+                continue
+            named = entries.get((key[0], f"{ATTACH_NAME}001f")) or entries.get(
+                (key[0], f"{ATTACH_NAME}001e")
+            )
+            name = text_value(read(named), named[1]) if named else ""
+            text = attachment_text(name, read(entry), attachments)
+            if text:
+                yield f"Attachment {name}:"
+                yield text
 
 
-def rfc822_chunks(data: bytes):
+def rfc822_chunks(data: bytes, attachments: int = 0):
     message = message_from_bytes(data, policy=policy.default)
     yield header_block({name: str(message.get(name, "")).strip() for name in HEADER_FIELDS})
     names = sorted({part.get_filename() for part in message.walk() if part.get_filename()})
@@ -136,6 +200,8 @@ def rfc822_chunks(data: bytes):
         yield "Attachments: " + ", ".join(names)
     body = message.get_body(preferencelist=("plain", "html"))
     if body is None:
+        if attachments > 0:
+            yield from rfc822_attachments(message, attachments)
         return
     try:
         text = body.get_content()
@@ -143,10 +209,23 @@ def rfc822_chunks(data: bytes):
         # Unknown or broken charset; fall back to a best-effort decode.
         text = decode(body.get_payload(decode=True) or b"")
     yield html_to_text(text) if body.get_content_subtype() == "html" else text
+    if attachments > 0:
+        yield from rfc822_attachments(message, attachments)
 
 
-def chunks(path: Path):
+def rfc822_attachments(message, limit: int):
+    for part in message.walk():
+        name = part.get_filename()
+        if not name or part.get_content_maintype() == "multipart":
+            continue
+        text = attachment_text(name, part.get_payload(decode=True) or b"", limit)
+        if text:
+            yield f"Attachment {name}:"
+            yield text
+
+
+def chunks(path: Path, attachments: int = 0):
     if path.suffix.lower() == ".msg":
-        yield from outlook_chunks(path)
+        yield from outlook_chunks(path, attachments)
     else:
-        yield from rfc822_chunks(path.read_bytes())
+        yield from rfc822_chunks(path.read_bytes(), attachments)
