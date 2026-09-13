@@ -51,6 +51,7 @@ def search(
     collapse: bool = True,
     since: str = "",
     until: str = "",
+    people: bool = False,
     exclude=(),
 ):
     # Meaning is asked for by default, and declined for an exact identifier.
@@ -63,6 +64,7 @@ def search(
             until=moment(until, end_of_day=True),
             collapse=collapse,
             meaning=True,
+            people_only=people,
             exclude=tuple(exclude),
             limit=max(1, min(limit, 50)),
         ),
@@ -113,7 +115,10 @@ def build(store: Store, excludes=()):
             "'migration'. Optionally restrict to one file type with kind, such as 'msg' "
             "for Outlook mail, 'pdf', or 'py'. collapse shows one row per email "
             "conversation instead of every reply; turn it off to see each message. "
-            "since and until are YYYY-MM-DD dates bounding when a document is from."
+            "since and until are YYYY-MM-DD dates bounding when a document is from. "
+            "people excludes mail from trackers, wikis and build systems, which on a "
+            "work mailbox is most of it by volume; use it when the question is about "
+            "what colleagues said or decided rather than what a system reported."
         )
     )
     def search_documents(
@@ -123,8 +128,9 @@ def build(store: Store, excludes=()):
         collapse: bool = True,
         since: str = "",
         until: str = "",
+        people: bool = False,
     ) -> dict:
-        return search(store, query, kind, limit, collapse, since, until, excludes)
+        return search(store, query, kind, limit, collapse, since, until, people, excludes)
 
     @server.tool(
         description=(
