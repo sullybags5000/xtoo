@@ -184,4 +184,10 @@ def search(store, query="", kind="", offset=0, limit=40, encode=None, model_name
         {**item, "snippet": snippets.get(item["id"], item["snippet"])}
         for item in store.by_ids(page)
     ]
-    return {"items": items, "total": len(ranking), "offset": offset, "limit": limit}
+    return {
+        "items": items,
+        "total": len(ranking),
+        "matched": len(ranking),
+        "offset": offset,
+        "limit": limit,
+    }

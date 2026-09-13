@@ -36,6 +36,11 @@ sort by when things actually happened. Replies and forwards of one subject share
 conversation, and **Group replies** in the search bar shows one row per conversation
 with the number of messages in it; clear the tick to see every reply.
 
+Grouping reads the best 2,000 matches rather than the whole index, so on a large
+library the conversation count is capped at that while the document count beside it
+stays exact. The alternative would be a grouping pass over every match on each
+keystroke.
+
 Documents are also linked by the identifiers they mention — tracker references such as
 `PROJ-4821`, correspondents as written in mail headers, and email addresses. Selecting
 a result lists its links, and choosing one shows every document that mentions it,

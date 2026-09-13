@@ -135,8 +135,21 @@ async function search() {
     if (sequence !== searchSequence) return;
     notice();
     $("results").replaceChildren();
+    const grouped = $("collapse").checked && data.matched > data.total;
+    const noun = grouped
+      ? data.total === 1
+        ? "conversation"
+        : "conversations"
+      : data.total === 1
+        ? "document"
+        : "documents";
+    const across = grouped
+      ? ` across ${data.matched.toLocaleString()} documents`
+      : $("query").value
+        ? " found"
+        : " in your library";
     $("result-count").textContent =
-      `${data.total.toLocaleString()} ${data.total === 1 ? "document" : "documents"}${$("query").value ? " found" : " in your library"}`;
+      `${data.total.toLocaleString()} ${noun}${across}`;
     for (const item of data.items) {
       const button = node("button", "result");
       button.type = "button";
