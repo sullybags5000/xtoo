@@ -2,6 +2,7 @@
 
 import re
 import struct
+import zlib
 from datetime import datetime, timezone
 
 from outlook_msg import build as build_msg
@@ -14,12 +15,16 @@ def utf16(value):
 
 
 def bag_of_words(texts):
-    """A deterministic stand-in for the embedding model: no download, no network."""
+    """A deterministic stand-in for the embedding model: no download, no network.
+
+    crc32 rather than hash(), which is seeded differently in every process and would
+    make distances, and therefore the relevance limit, vary between runs.
+    """
     encoded = []
     for text in texts:
         vector = [0.0] * 256
         for word in set(re.findall(r"\w+", text.lower())):
-            vector[hash(word) % 256] += 1.0
+            vector[zlib.crc32(word.encode()) % 256] += 1.0
         scale = sum(value * value for value in vector) ** 0.5 or 1.0
         encoded.append([value / scale for value in vector])
     return encoded

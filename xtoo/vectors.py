@@ -13,7 +13,7 @@ DIMENSIONS = 256
 # Vectors are stored with unit length, so distance depends on direction alone and can be
 # compared against a fixed threshold. Raise when that storage changes, which makes an
 # index built the old way rebuild itself rather than compare incomparable numbers.
-FORMAT = "unit-length-1"
+FORMAT = "unit-length-2"
 # Nearest-neighbour search returns the closest vectors however far away they are, so
 # without a limit a search for something absent still returns a page of noise. Unit
 # vectors put this at roughly a quarter cosine similarity.
@@ -71,11 +71,18 @@ def pieces(title: str, content: str):
 
 
 def pack(vector):
+    """Bytes for a unit-length vector, or None for text with no direction at all.
+
+    Text the model cannot tokenise — whitespace, NUL padding, control characters,
+    replacement characters from a failed decode — embeds to zeros. A zero vector is
+    equidistant from everything, which puts it nearer any query than genuinely
+    unrelated text, so it is never stored.
+    """
     values = [float(value) for value in vector]
     length = sum(value * value for value in values) ** 0.5
-    if length:
-        values = [value / length for value in values]
-    return struct.pack(f"{len(values)}f", *values)
+    if not length:
+        return None
+    return struct.pack(f"{len(values)}f", *(value / length for value in values))
 
 
 _LOADED = {}
@@ -184,18 +191,25 @@ def build(
             if replacing:
                 marks = ",".join("?" * len(replacing))
                 db.execute(f"DELETE FROM vectors WHERE document_id IN ({marks})", replacing)
+            stored = {}
             for document_id, vector in zip(owners, vectors):
+                embedding = pack(vector)
+                if embedding is None:
+                    continue
                 db.execute(
                     "INSERT INTO vectors(document_id, embedding) VALUES (?, ?)",
-                    (document_id, pack(vector)),
+                    (document_id, embedding),
                 )
+                stored[document_id] = stored.get(document_id, 0) + 1
+            # A document with nothing embeddable still records the attempt, so it is
+            # not examined again on every run.
             db.executemany(
                 "INSERT OR REPLACE INTO embedded(document_id, modified_ns, chunks) "
                 "VALUES (?, ?, ?)",
-                [(row["id"], row["modified_ns"], owners.count(row["id"])) for row in rows],
+                [(row["id"], row["modified_ns"], stored.get(row["id"], 0)) for row in rows],
             )
             documents += len(rows)
-            chunks += len(texts)
+            chunks += sum(stored.values())
         if report:
             report(f"  embedded {documents:,} of {remaining:,}")
 
@@ -207,6 +221,8 @@ def similar(store, query: str, limit: int = FUSION_DEPTH, encode=None, model_nam
             prepare(db)
             encode = embedder(model_name or model_of(db) or MODEL)
     vector = pack(encode([query])[0])
+    if vector is None:
+        return []
     with store.connect() as db:
         prepare(db)
         rows = db.execute(
