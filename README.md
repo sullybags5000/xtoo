@@ -89,4 +89,4 @@ retrieves leaves the machine with the conversation.
 Do not put work documents, credentials, or the index in Git. The repository has
 no declared open-source license.
 
-Last verified against commit `a297f14`.
+Last verified against commit `5576572`.
