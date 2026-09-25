@@ -379,16 +379,20 @@ class Store:
             ]
             return item
 
-    def entities(self, name):
-        """Every indexed name that starts with the given text, for browsing links."""
+    def entities(self, name, exclude=()):
+        """Every indexed name that starts with the given text, for browsing links,
+        counting only documents outside the excluded paths."""
+        conditions, params = self.predicates(exclude=exclude)
+        narrowing = "".join(f" AND {condition}" for condition in conditions)
         with self.connect() as db:
             return [
                 dict(row)
                 for row in db.execute(
-                    """SELECT kind, name, COUNT(*) AS count FROM entities
-                    WHERE name LIKE ? ESCAPE '\\' GROUP BY kind, name
-                    ORDER BY count DESC, name LIMIT 50""",
-                    (like(name) + "%",),
+                    f"""SELECT e.kind, e.name, COUNT(*) AS count FROM entities e
+                    JOIN documents d ON d.id = e.document_id
+                    WHERE e.name LIKE ? ESCAPE '\\'{narrowing} GROUP BY e.kind, e.name
+                    ORDER BY count DESC, e.name LIMIT 50""",
+                    (like(name) + "%", *params),
                 )
             ]
 
