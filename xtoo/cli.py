@@ -30,7 +30,11 @@ def main():
     save = commands.add_parser("backup", help="Write a consistent copy of the index")
     save.add_argument("path", type=Path, help="File to create; it must not already exist")
     find = commands.add_parser("search", help="Search the index from the terminal")
-    find.add_argument("query", nargs="*", help="Words to find; every word must match")
+    find.add_argument(
+        "query",
+        nargs="*",
+        help='Words to find; every word must match. "a phrase" matches in order, -word excludes',
+    )
     find.add_argument("--kind", default="", help="Restrict to one file type, such as msg or pdf")
     find.add_argument(
         "--entity", default="", help="Documents linked to a ticket, person or address"

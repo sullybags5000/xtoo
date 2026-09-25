@@ -41,6 +41,29 @@ def test_literal_queries_and_pagination(library):
     assert not {d["id"] for d in page1["items"]} & {d["id"] for d in page2["items"]}
 
 
+def test_phrases_and_excluded_words(library):
+    root, _, store, indexer = library
+    (root / "a.txt").write_text("The disk cleanup script ran overnight.")
+    (root / "b.txt").write_text("Cleanup of the disk script is pending.")
+    (root / "c.txt").write_text("Draft: disk cleanup plan.")
+    indexer.scan()
+
+    def titles(query):
+        return sorted(item["title"] for item in store.search(query)["items"])
+
+    assert titles("disk cleanup") == ["a.txt", "b.txt", "c.txt"]
+    assert titles('"disk cleanup"') == ["a.txt", "c.txt"]
+    assert titles('"disk cleanup" -draft') == ["a.txt"]
+    assert titles('disk -"cleanup script"') == ["b.txt", "c.txt"]
+    # Exclusion is exact, so a prefix is not excluded; alone it narrows everything.
+    assert titles("disk -dra") == ["a.txt", "b.txt", "c.txt"]
+    assert titles("-draft") == ["a.txt", "b.txt"]
+    # A hyphen inside a word is not an exclusion, and an unclosed quote runs to the end.
+    assert titles("cleanup-plan") == ["c.txt"]
+    assert titles('"cleanup plan') == ["c.txt"]
+    assert titles('"" - --') == []
+
+
 def test_exclusions_symlinks_and_size_limit(library):
     root, settings, store, indexer = library
     (root / "AppData").mkdir()

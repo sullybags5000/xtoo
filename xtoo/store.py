@@ -85,6 +85,43 @@ COLUMNS = (
 )
 
 
+# A quoted phrase, closed or running to the end, or a bare token; either may be negated.
+TOKEN = re.compile(r'(-?)"([^"]*)"?|(-?)(\S+)')
+WORD = re.compile(r"[^\W_]+", re.UNICODE)
+MAX_TERMS = 32
+
+
+def parse(query):
+    """Full-text expressions for what a query requires and what it excludes, and its
+    plain words for semantic search.
+
+    Bare words match as prefixes, so results arrive while typing. A quoted phrase
+    matches those words in that order. A leading `-` excludes a word or phrase
+    exactly. Only word characters reach FTS5, each inside quotes, so user input is
+    never read as an FTS operator or as SQL.
+    """
+    required, excluded, words = [], [], []
+    budget = MAX_TERMS
+    for token in TOKEN.finditer(query):
+        quoted = token.group(2) is not None
+        negated = bool(token.group(1) if quoted else token.group(3))
+        terms = WORD.findall(token.group(2) if quoted else token.group(4))[:budget]
+        if not terms:
+            continue
+        budget -= len(terms)
+        if negated:
+            excluded.append('"' + " ".join(terms) + '"')
+        elif quoted:
+            required.append('"' + " ".join(terms) + '"')
+            words += terms
+        else:
+            required += ['"' + term + '"*' for term in terms]
+            words += terms
+        if not budget:
+            break
+    return " AND ".join(required), " OR ".join(excluded), " ".join(words)
+
+
 def like(text):
     """A LIKE pattern matching the text literally, for use with ESCAPE '\\'."""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -395,10 +432,18 @@ class Store:
         with self.connect() as db:
             return self.hydrate(db, ids)
 
-    def predicates(self, kind="", entity="", since=0, until=0, people_only=False, exclude=()):
-        """SQL conditions and parameters shared by every way of searching."""
+    def predicates(
+        self, kind="", entity="", since=0, until=0, people_only=False, exclude=(), without=""
+    ):
+        """SQL conditions and parameters shared by every way of searching. `without` is
+        a full-text expression for words a query excludes, from `parse`."""
         conditions = []
         params = []
+        if without:
+            conditions.append(
+                "d.id NOT IN (SELECT rowid FROM search_index WHERE search_index MATCH ?)"
+            )
+            params.append(without)
         if kind:
             conditions.append("d.kind = ?")
             params.append(kind)
@@ -487,9 +532,7 @@ class Store:
         people_only=False,
         exclude=(),
     ):
-        # Treat user input as literal words, never as FTS operators or SQL.
-        terms = re.findall(r"[^\W_]+", query, re.UNICODE)[:32]
-        expression = " AND ".join('"' + term + '"*' for term in terms)
+        expression, without, _ = parse(query)
         empty = {"items": [], "total": 0, "matched": 0, "offset": offset, "limit": limit}
         conditions, params = self.predicates(
             kind=kind,
@@ -498,6 +541,7 @@ class Store:
             until=until,
             people_only=people_only,
             exclude=exclude,
+            without=without,
         )
         source = "documents d"
         snippet = "substr(d.content, 1, 240)"
@@ -509,7 +553,7 @@ class Store:
             params.insert(0, expression)
             snippet = "snippet(search_index, 1, '', '', ' … ', 36)"
             score = "bm25(search_index, 5.0, 1.0)"
-        elif query.strip():
+        elif query.strip() and not without:
             return empty
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         # A constant score would stop the date index being used when browsing.
