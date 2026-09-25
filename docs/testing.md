@@ -9,7 +9,7 @@ pytest
 git diff --check
 ```
 
-Forty tests cover:
+Fifty-two tests cover:
 
 | Area | What is checked |
 | --- | --- |
@@ -20,7 +20,8 @@ Forty tests cover:
 | Derived fields | Message dates replacing file timestamps, conversation grouping, entity links across file types |
 | Migration | Enriching an index created before those fields existed, including the schema upgrade |
 | Semantic search | Building, resuming, re-embedding changed documents, dropping removed ones, changing model, chunking, grouping |
-| Interfaces | HTTP API guards and endpoints, MCP tools, CLI setup |
+| Interfaces | HTTP API guards and endpoints, MCP tools and their registration, `assistant_excludes` |
+| Terminal | Every `xtoo` command in-process: output, exit codes, filters, malformed input |
 
 | Module | Area |
 | --- | --- |
@@ -29,7 +30,8 @@ Forty tests cover:
 | `test_mail.py` | Messages and attachments |
 | `test_enrich.py` | Derived fields, migration, filters across both search paths |
 | `test_vectors.py` | Semantic search |
-| `test_interfaces.py` | HTTP API, browser contract, MCP tools, CLI |
+| `test_interfaces.py` | HTTP API, browser contract, MCP tools, CLI setup |
+| `test_cli.py` | Terminal commands |
 
 Shared fixtures live in `conftest.py` and synthetic data in `helpers.py`.
 
@@ -40,7 +42,10 @@ the embedding model, so they measure the pipeline without downloading anything.
 
 Everything uses temporary synthetic data: no work data, no network, no external
 service. Tests needing `sqlite-vec` skip themselves when it is absent, and it is
-included in the `dev` extra so they normally run.
+included in the `dev` extra so they normally run. The test that registers the
+assistant tools needs the `mcp` extra and skips without it; neither the `dev`
+extra nor CI installs it, so run `python -m pip install -e '.[dev,mcp]'` to
+include it locally.
 
 GitHub Actions runs `ruff check .` and `pytest` on Python 3.10, 3.11, and 3.12
 for pushes and pull requests. The workflow is
