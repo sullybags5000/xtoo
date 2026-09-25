@@ -72,9 +72,11 @@ def search(
     return {"total": found["total"], "results": [result(item) for item in found["items"]]}
 
 
-def read(store: Store, document_id: int, max_characters: int = 4000):
+def read(store: Store, document_id: int, max_characters: int = 4000, exclude=()):
     item = store.document(document_id)
-    if item is None:
+    # Ids are sequential, so an excluded document must be refused by id as well, and
+    # refused exactly as a missing one is, so its existence is not revealed either.
+    if item is None or any(fragment in item["path"] for fragment in exclude):
         return {"error": f"No document with id {document_id}"}
     limit = max(200, min(max_characters, READ_LIMIT))
     content = item["content"]
@@ -97,9 +99,12 @@ def by_entity(store: Store, name: str, limit: int = 20, exclude=()):
     return {"total": found["total"], "results": [result(item) for item in found["items"]]}
 
 
-def names(store: Store, prefix: str):
+def names(store: Store, prefix: str, exclude=()):
     return {
-        "names": [f"{row['kind']}:{row['name']} ({row['count']})" for row in store.entities(prefix)]
+        "names": [
+            f"{row['kind']}:{row['name']} ({row['count']})"
+            for row in store.entities(prefix, exclude=exclude)
+        ]
     }
 
 
@@ -112,9 +117,10 @@ def build(store: Store, excludes=()):
         description=(
             "Full-text search across the user's indexed documents, scripts and email. "
             "Every word must match; words match from the start, so 'migr' finds "
-            "'migration'. Quote words to match them as an exact phrase, and prefix a word "
-            "or quoted phrase with - to exclude documents containing it. Optionally restrict to one file type with kind, such as 'msg' "
-            "for Outlook mail, 'pdf', or 'py'. collapse shows one row per email "
+            "'migration'. Quote words to match them as an exact phrase, and prefix a "
+            "word or quoted phrase with - to exclude documents containing it. Optionally "
+            "restrict to one file type with kind, such as 'msg' for Outlook mail, 'pdf', "
+            "or 'py'. collapse shows one row per email "
             "conversation instead of every reply; turn it off to see each message. "
             "since and until are YYYY-MM-DD dates bounding when a document is from. "
             "people excludes mail from trackers, wikis and build systems, which on a "
@@ -140,7 +146,7 @@ def build(store: Store, excludes=()):
         )
     )
     def read_document(document_id: int, max_characters: int = 4000) -> dict:
-        return read(store, document_id, max_characters)
+        return read(store, document_id, max_characters, excludes)
 
     @server.tool(
         description=(
@@ -161,7 +167,7 @@ def build(store: Store, excludes=()):
         )
     )
     def list_entities(prefix: str) -> dict:
-        return names(store, prefix)
+        return names(store, prefix, excludes)
 
     return server
 
