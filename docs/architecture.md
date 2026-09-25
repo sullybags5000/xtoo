@@ -35,6 +35,11 @@ The index is `~/.local/share/xtoo/index.sqlite3` by default, with SQLite WAL
 sidecars. Source files are never rewritten. Missing roots retain cached rows and
 report an error; successful traversals remove rows for deleted files.
 
+A scan queues its writes and applies them in one short transaction every 500 files
+or two seconds, so no lock is held while files are read and searches keep working
+throughout. A file that cannot be read is recorded with its timestamp and size,
+and is not read again until one of them changes or `full_scan_hours` have passed.
+
 Mail is indexed from files exported by
 [`scripts/Export-OutlookMail.ps1`](../scripts/Export-OutlookMail.ps1), which runs
 on Windows against a local Outlook profile. Xtoo itself never connects to
