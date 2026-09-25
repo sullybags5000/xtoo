@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed `assistant_excludes` being bypassed by `read_document`, which returned an
+  excluded document to an assistant that asked for its id. Ids are sequential, so
+  they could be guessed. `list_entities` no longer counts excluded documents or
+  lists names found only in them.
 - Added search syntax: `"quoted phrases"` match words in order, and a leading `-`
   excludes a word or phrase, in the browser, the terminal and the assistant
   interface alike. See [Usage](usage.md#search-syntax).

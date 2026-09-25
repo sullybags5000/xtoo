@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from xtoo import mcp_server
@@ -22,6 +23,48 @@ def test_mcp_tools_search_read_and_link(correspondence):
     assert mcp_server.by_entity(store, "PROJ-4821")["total"] == 4
     assert "ticket:PROJ-4821 (4)" in mcp_server.names(store, "PROJ")["names"]
     assert mcp_server.read(store, 99999)["error"]
+
+
+def test_mcp_server_registers_read_only_tools_and_honours_excludes(correspondence):
+    pytest.importorskip("mcp")
+    import asyncio
+
+    root, _, store, _ = correspondence
+    server = mcp_server.build(store, excludes=(str(root / "fix.sh"),))
+
+    async def call(tool, **arguments):
+        result = await server.call_tool(tool, arguments)
+        assert not result.is_error, result
+        return json.loads(result.content[0].text)
+
+    async def exercise():
+        tools = {tool.name: tool for tool in await server.list_tools()}
+        assert set(tools) == {
+            "search_documents",
+            "read_document",
+            "find_by_entity",
+            "list_entities",
+        }
+        assert "exact phrase" in tools["search_documents"].description
+
+        found = await call("search_documents", query="upgrade", limit=5)
+        assert found["total"] == 1 and found["results"][0]["messages_in_conversation"] == 3
+        document = await call("read_document", document_id=found["results"][0]["id"])
+        assert "Upgrade fails" in document["content"]
+        # The excluded script mentions the ticket but is never returned.
+        linked = await call("find_by_entity", name="PROJ-4821")
+        assert linked["total"] == 3
+        assert all(item["title"] != "fix.sh" for item in linked["results"])
+        assert await call("search_documents", query="vpxd") == {"total": 0, "results": []}
+        # Nor can it be read by guessing its id, or counted among an identifier's documents.
+        hidden = store.search("vpxd")["items"][0]["id"]
+        assert await call("read_document", document_id=hidden) == {
+            "error": f"No document with id {hidden}"
+        }
+        names = await call("list_entities", prefix="PROJ")
+        assert names["names"][0] == "ticket:PROJ-4821 (3)"
+
+    asyncio.run(exercise())
 
 
 def test_api_exposes_conversations_and_entity_links(correspondence):
