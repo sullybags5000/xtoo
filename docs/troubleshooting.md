@@ -12,7 +12,7 @@
 | Mail sorted by export date, no links shown | An index built before enrichment | `xtoo search --limit 3` and check the dates | Run `xtoo migrate` once. |
 | Folder unavailable | Wrong WSL path or unavailable drive | `ls -ld '/mnt/c/Users/.../Documents'` | Correct `folders`; ensure the drive is mounted. |
 | OneDrive content missing | Files are online-only | Check Windows Explorer | Use **Always keep on this device**, then refresh. |
-| File absent from results | Unsupported, excluded, oversized, or extraction error | Read scan status/issues | Use a supported format, adjust settings, or inspect the error. |
+| File absent from results | Unsupported, excluded, oversized, or extraction error | Read scan status/issues | Use a supported format, adjust settings, or inspect the error. A file that could not be read is retried when it changes or after `full_scan_hours`. |
 | Scanned PDF has no matches | PDF contains images | Try selecting text in the PDF | OCR is not implemented; use a text-based copy. |
 | Address already in use | Another process owns the port | `ss -ltnp | rg ':8765'` | Stop it or run `xtoo serve --port 8766`. |
 | Browser host error | Server stopped or disallowed host | Check terminal and URL | Use `http://localhost:8765`; do not use a machine hostname. |

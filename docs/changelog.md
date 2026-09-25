@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- A file that cannot be read is no longer read again on every scan. It is
+  reported on each scan until it changes, and is retried once `full_scan_hours`
+  have passed in case the cause was temporary.
+- Scans write to the index in chunks of up to 500 files or two seconds rather
+  than one transaction per file. A first scan of many small files is much faster,
+  and new results appear in searches in chunks as a scan runs.
+- `_` and `%` in `assistant_excludes` and in folder names are matched literally;
+  they previously acted as wildcards.
+
 ## 0.2.0 — 2026-09-13
 
 - Added one query description shared by the browser, the terminal and the

@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pytest
 
@@ -128,8 +129,78 @@ def test_failed_extraction_discards_old_content_and_recovers(library, monkeypatc
         context.setattr("xtoo.indexer.extract_text", fail)
         assert indexer.scan()["error_count"] == 1
         assert store.search()["total"] == 0
+    # Once the file changes it is read again.
+    path.write_text("new content after a second edit")
     assert indexer.scan()["indexed"] == 1
-    assert store.search("new")["total"] == 1
+    assert store.search("second")["total"] == 1
+
+
+def test_unreadable_file_is_not_read_again_until_it_changes(library, monkeypatch):
+    root, settings, store, indexer = library
+    (root / "notes").mkdir()
+    broken = root / "notes/broken.txt"
+    broken.write_text("unreadable")
+    attempts = []
+
+    def fail(path, *args):
+        attempts.append(path.name)
+        raise ValueError("Corrupt file")
+
+    monkeypatch.setattr("xtoo.indexer.extract_text", fail)
+    assert indexer.scan()["error_count"] == 1
+    # Unchanged, it is reported again without being read again, by either kind of scan.
+    for full in (True, False):
+        result = indexer.scan(full=full)
+        assert result["error_count"] == 1
+        assert result["errors"][0]["message"] == "Corrupt file"
+    assert attempts == ["broken.txt"]
+
+    # A temporary cause clears up, so it is tried again after a full-scan interval.
+    with store.connect() as db:
+        db.execute(
+            "UPDATE failures SET failed_at = failed_at - ?", (settings.full_scan_hours * 3600,)
+        )
+    indexer.scan()
+    assert attempts == ["broken.txt"] * 2
+
+    # A failure is forgotten along with its file.
+    broken.unlink()
+    assert indexer.scan(full=False)["error_count"] == 0
+    assert store.failures(str(root)) == {}
+
+
+def test_batched_writes_apply_in_chunks_and_undo_only_a_failed_write(library):
+    root, _, store, _ = library
+    fields = {"root": str(root), "kind": "txt", "modified_ns": 1, "size": 1}
+    reported = []
+
+    def committed():
+        with sqlite3.connect(store.path) as other:
+            return other.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+
+    with store.batch(lambda path, exc: reported.append(path), size=2, seconds=3600) as batch:
+        for name in ("a", "b", "c"):
+            batch.upsert(path=f"/{name}", title=name, content=name, **fields)
+            batch.tick()
+        assert committed() == 2
+        store.upsert(path="/d", title="d", content="previous text", **fields)
+        batch.upsert(path="/d", title=None, content="d", **fields)
+    assert reported == ["/d"]
+    assert {item["title"] for item in store.search()["items"]} == {"a", "b", "c"}
+    assert list(store.failures(str(root))) == ["/d"]
+
+
+def test_like_wildcards_in_paths_are_literal(library):
+    root, _, store, indexer = library
+    for folder in ("mailbox_-_Inbox", "mailboxX-XInbox"):
+        (root / folder).mkdir()
+        (root / folder / "note.txt").write_text("status report")
+    indexer.scan()
+    titles = store.search("status", exclude=("mailbox_-_Inbox",))["items"]
+    assert [item["path"] for item in titles] == [str(root / "mailboxX-XInbox/note.txt")]
+    assert store.paths_under(str(root), str(root / "mailbox_-_Inbox")) == [
+        str(root / "mailbox_-_Inbox/note.txt")
+    ]
 
 
 def test_configuration_validation_and_nested_roots(tmp_path):

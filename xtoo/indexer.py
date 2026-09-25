@@ -79,107 +79,146 @@ class Indexer:
             self._update(errors=list(errors), error_count=error_count)
 
         self._update(running=True, errors=[], error_count=0, **counters)
+
+        def stored_failed(path, exc):
+            counters["indexed"] -= 1
+            error(path, exc)
+
+        # A file that could not be read is not read again until it changes, or until a
+        # full-scan interval has passed in case the cause was temporary.
+        retry_seconds = self.settings.full_scan_hours * 3600
         try:
             self.store.retain_roots({str(p) for p in self.settings.folders})
-            for root in self.settings.folders:
-                if self._stop.is_set():
-                    break
-                if not root.is_dir():
-                    error(
-                        root, "Folder unavailable. Previous results are retained until it returns."
-                    )
-                    continue
-                old = self.store.inventory(str(root))
-                known_times = {} if full else self.store.folder_times(str(root))
-                folder_times = {}
-                seen = set()
-                walk_failed = False
-
-                def walk_error(exc):
-                    nonlocal walk_failed
-                    walk_failed = True
-                    error(exc.filename, exc)
-
-                for current, dirs, files in os.walk(root, onerror=walk_error, followlinks=False):
+            with self.store.batch(stored_failed) as batch:
+                for root in self.settings.folders:
                     if self._stop.is_set():
                         break
-                    dirs[:] = sorted(
-                        d
-                        for d in dirs
-                        if (
-                            d not in self.settings.excluded_dirs
-                            and not (Path(current) / d).is_symlink()
-                            and (Path(current) / d).resolve() != self.settings.data_dir
+                    if not root.is_dir():
+                        error(
+                            root,
+                            "Folder unavailable. Previous results are retained until it returns.",
                         )
-                    )
-                    try:
-                        folder_times[current] = os.stat(current).st_mtime_ns
-                    except OSError as exc:
-                        folder_times.pop(current, None)
-                        error(current, exc)
-                    if known_times.get(current, -1) == folder_times.get(current, -2):
-                        # Nothing was added or removed here since the last full scan.
-                        unchanged = self.store.paths_under(str(root), current)
-                        seen.update(unchanged)
-                        counters["unchanged"] += len(unchanged)
-                        self._update(**counters)
                         continue
-                    for name in sorted(files):
+                    old = self.store.inventory(str(root))
+                    failed = self.store.failures(str(root))
+                    known_times = {} if full else self.store.folder_times(str(root))
+                    folder_times = {}
+                    seen = set()
+                    walk_failed = False
+
+                    def walk_error(exc):
+                        nonlocal walk_failed
+                        walk_failed = True
+                        error(exc.filename, exc)
+
+                    for current, dirs, files in os.walk(
+                        root, onerror=walk_error, followlinks=False
+                    ):
                         if self._stop.is_set():
                             break
-                        path = Path(current) / name
-                        if path.suffix.lower() not in supported or name.startswith("~$"):
-                            continue
-                        key = str(path)
-                        if path.is_symlink():
-                            continue
-                        seen.add(key)
+                        dirs[:] = sorted(
+                            d
+                            for d in dirs
+                            if (
+                                d not in self.settings.excluded_dirs
+                                and not (Path(current) / d).is_symlink()
+                                and (Path(current) / d).resolve() != self.settings.data_dir
+                            )
+                        )
                         try:
-                            stat = path.stat()
-                            if stat.st_size > self.settings.max_file_mb * 1024 * 1024:
-                                counters["skipped"] += 1
-                                self.store.remove([key])
-                                continue
-                            if old.get(key) == (stat.st_mtime_ns, stat.st_size):
-                                counters["unchanged"] += 1
-                                continue
-                            content = extract_text(
-                                path,
-                                self.settings.max_text_chars,
-                                text_extensions,
-                                self.settings.attachment_chars,
-                            )
-                            after = path.stat()
-                            if (after.st_mtime_ns, after.st_size) != (
-                                stat.st_mtime_ns,
-                                stat.st_size,
-                            ):
-                                raise ValueError(
-                                    "File changed during extraction; will retry next scan"
-                                )
-                            kind = path.suffix.lower()[1:]
-                            self.store.upsert(
-                                path=key,
-                                root=str(root),
-                                title=path.name,
-                                kind=kind,
-                                modified_ns=stat.st_mtime_ns,
-                                size=stat.st_size,
-                                content=content,
-                                **enrichment(content, path.name, kind, stat.st_mtime_ns),
-                            )
-                            counters["indexed"] += 1
-                        except Exception as exc:
-                            # Do not continue serving old text after a failed refresh.
-                            self.store.remove([key])
-                            error(path, exc)
-                        finally:
+                            folder_times[current] = os.stat(current).st_mtime_ns
+                        except OSError as exc:
+                            folder_times.pop(current, None)
+                            error(current, exc)
+                        if known_times.get(current, -1) == folder_times.get(current, -2):
+                            # Nothing was added or removed here since the last full scan.
+                            unchanged = self.store.paths_under(str(root), current)
+                            seen.update(unchanged)
+                            counters["unchanged"] += len(unchanged)
+                            for key in self.store.paths_under(str(root), current, failed=True):
+                                seen.add(key)
+                                error(key, failed[key]["message"])
+                            batch.tick()
                             self._update(**counters)
-                if not walk_failed and not self._stop.is_set():
-                    missing = old.keys() - seen
-                    self.store.remove(missing)
-                    counters["removed"] += len(missing)
-                    self.store.record_folders(str(root), folder_times)
+                            continue
+                        for name in sorted(files):
+                            if self._stop.is_set():
+                                break
+                            path = Path(current) / name
+                            if path.suffix.lower() not in supported or name.startswith("~$"):
+                                continue
+                            key = str(path)
+                            if path.is_symlink():
+                                continue
+                            seen.add(key)
+                            stat = None
+                            try:
+                                stat = path.stat()
+                                if stat.st_size > self.settings.max_file_mb * 1024 * 1024:
+                                    counters["skipped"] += 1
+                                    batch.remove([key])
+                                    continue
+                                if old.get(key) == (stat.st_mtime_ns, stat.st_size):
+                                    counters["unchanged"] += 1
+                                    continue
+                                known = failed.get(key)
+                                if (
+                                    known
+                                    and (known["modified_ns"], known["size"])
+                                    == (stat.st_mtime_ns, stat.st_size)
+                                    and time.time() - known["failed_at"] < retry_seconds
+                                ):
+                                    error(path, known["message"])
+                                    continue
+                                content = extract_text(
+                                    path,
+                                    self.settings.max_text_chars,
+                                    text_extensions,
+                                    self.settings.attachment_chars,
+                                )
+                                after = path.stat()
+                                if (after.st_mtime_ns, after.st_size) != (
+                                    stat.st_mtime_ns,
+                                    stat.st_size,
+                                ):
+                                    raise ValueError(
+                                        "File changed during extraction; will retry next scan"
+                                    )
+                                kind = path.suffix.lower()[1:]
+                                batch.upsert(
+                                    path=key,
+                                    root=str(root),
+                                    title=path.name,
+                                    kind=kind,
+                                    modified_ns=stat.st_mtime_ns,
+                                    size=stat.st_size,
+                                    content=content,
+                                    **enrichment(content, path.name, kind, stat.st_mtime_ns),
+                                )
+                                counters["indexed"] += 1
+                            except Exception as exc:
+                                # Do not continue serving old text after a failed refresh.
+                                batch.remove([key])
+                                if stat is not None:
+                                    batch.record_failure(
+                                        path=key,
+                                        root=str(root),
+                                        modified_ns=stat.st_mtime_ns,
+                                        size=stat.st_size,
+                                        message=str(exc),
+                                    )
+                                error(path, exc)
+                            finally:
+                                batch.tick()
+                                self._update(**counters)
+                    if not walk_failed and not self._stop.is_set():
+                        missing = old.keys() - seen
+                        batch.remove(missing)
+                        counters["removed"] += len(missing)
+                        # Forget failures for files that are gone.
+                        batch.remove(failed.keys() - seen)
+                        batch.record_folders(str(root), folder_times)
+                    batch.flush()
         except Exception as exc:
             error("Index", exc)
         finally:

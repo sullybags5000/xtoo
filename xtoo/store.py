@@ -1,5 +1,7 @@
 import re
 import sqlite3
+import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -26,6 +28,14 @@ CREATE TABLE IF NOT EXISTS folders (
     mtime_ns INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS failures (
+    path TEXT PRIMARY KEY,
+    root TEXT NOT NULL,
+    modified_ns INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    failed_at REAL NOT NULL,
+    message TEXT NOT NULL
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS entities (
     document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
@@ -75,6 +85,11 @@ COLUMNS = (
 )
 
 
+def like(text):
+    """A LIKE pattern matching the text literally, for use with ESCAPE '\\'."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def shaped(row, thread_size=None):
     item = {key: value for key, value in dict(row).items() if key not in INTERNAL}
     if thread_size is not None:
@@ -82,10 +97,90 @@ def shaped(row, thread_size=None):
     return item
 
 
+class Batch:
+    """Writes queued during a scan and applied together in one short transaction.
+    Opening a connection and syncing to disk once per file is most of the cost of a
+    first scan, and queuing rather than holding a transaction open means no lock is
+    held while files are read, so other writers are never kept waiting on a scan."""
+
+    def __init__(self, store, size, seconds, failed):
+        self.store = store
+        self.size = size
+        self.seconds = seconds
+        self.failed = failed
+        self.queue = []
+        self.started = time.monotonic()
+
+    def upsert(self, **fields):
+        self.queue.append(("upsert", fields))
+
+    def remove(self, paths):
+        self.queue.append(("remove", {"paths": list(paths)}))
+
+    def record_failure(self, **fields):
+        self.queue.append(("record_failure", fields))
+
+    def record_folders(self, root, times):
+        self.queue.append(("record_folders", {"root": root, "times": times}))
+
+    def tick(self):
+        """Apply the queue once enough has accumulated. The time limit bounds how long
+        new results take to appear in searches."""
+        if len(self.queue) >= self.size or (
+            self.queue and time.monotonic() - self.started >= self.seconds
+        ):
+            self.flush()
+
+    def flush(self):
+        queue, self.queue = self.queue, []
+        self.started = time.monotonic()
+        if not queue:
+            return
+        db = sqlite3.connect(self.store.path, timeout=30, isolation_level=None)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA foreign_keys=ON")
+        self.store._local.db = db
+        failed = []
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            for name, fields in queue:
+                # A write that fails is undone alone, as it was when each had its own
+                # transaction.
+                db.execute("SAVEPOINT write")
+                try:
+                    getattr(self.store, name)(**fields)
+                except sqlite3.Error as exc:
+                    db.execute("ROLLBACK TO write")
+                    if name != "upsert":
+                        raise
+                    # Do not continue serving old text after a failed refresh.
+                    self.store.remove([fields["path"]])
+                    self.store.record_failure(
+                        path=fields["path"],
+                        root=fields["root"],
+                        modified_ns=fields["modified_ns"],
+                        size=fields["size"],
+                        message=str(exc),
+                    )
+                    failed.append((fields["path"], exc))
+                db.execute("RELEASE write")
+            db.execute("COMMIT")
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+        finally:
+            self.store._local.db = None
+            db.close()
+        for path, exc in failed:
+            self.failed(path, exc)
+
+
 class Store:
     def __init__(self, directory: Path):
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.path = directory / "index.sqlite3"
+        self._local = threading.local()
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript(TABLES)
@@ -108,6 +203,11 @@ class Store:
 
     @contextmanager
     def connect(self):
+        shared = getattr(self._local, "db", None)
+        if shared is not None:
+            # A batch is applying its queue; it owns the transaction.
+            yield shared
+            return
         db = sqlite3.connect(self.path, timeout=30)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
@@ -116,6 +216,14 @@ class Store:
                 yield db
         finally:
             db.close()
+
+    @contextmanager
+    def batch(self, failed, size=500, seconds=2.0):
+        """Queue writes until the block ends, applying them in chunks. `failed` is
+        called with the path and error of any document that could not be stored."""
+        batch = Batch(self, size, seconds, failed)
+        yield batch
+        batch.flush()
 
     def upsert(
         self,
@@ -159,6 +267,7 @@ class Store:
                 ),
             ).fetchone()[0]
             self.link(db, document_id, entities)
+            db.execute("DELETE FROM failures WHERE path = ?", (path,))
 
     def link(self, db, document_id, entities):
         db.execute("DELETE FROM entities WHERE document_id = ?", (document_id,))
@@ -178,14 +287,33 @@ class Store:
 
     def remove(self, paths):
         with self.connect() as db:
-            db.executemany("DELETE FROM documents WHERE path = ?", ((p,) for p in paths))
+            paths = [(p,) for p in paths]
+            db.executemany("DELETE FROM documents WHERE path = ?", paths)
+            db.executemany("DELETE FROM failures WHERE path = ?", paths)
+
+    def record_failure(self, *, path, root, modified_ns, size, message):
+        """Remember that a file could not be read, so it is not read again unchanged."""
+        with self.connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO failures(path, root, modified_ns, size, failed_at, "
+                "message) VALUES (?, ?, ?, ?, ?, ?)",
+                (path, root, modified_ns, size, time.time(), message),
+            )
+
+    def failures(self, root):
+        with self.connect() as db:
+            return {
+                row["path"]: dict(row)
+                for row in db.execute("SELECT * FROM failures WHERE root = ?", (root,))
+            }
 
     def retain_roots(self, roots):
         with self.connect() as db:
             existing = [row[0] for row in db.execute("SELECT DISTINCT root FROM documents")]
-            db.executemany(
-                "DELETE FROM documents WHERE root = ?", ((r,) for r in existing if r not in roots)
-            )
+            existing += [row[0] for row in db.execute("SELECT DISTINCT root FROM failures")]
+            dropped = [(r,) for r in set(existing) if r not in roots]
+            db.executemany("DELETE FROM documents WHERE root = ?", dropped)
+            db.executemany("DELETE FROM failures WHERE root = ?", dropped)
 
     def stats(self):
         with self.connect() as db:
@@ -223,7 +351,7 @@ class Store:
                     """SELECT kind, name, COUNT(*) AS count FROM entities
                     WHERE name LIKE ? ESCAPE '\\' GROUP BY kind, name
                     ORDER BY count DESC, name LIMIT 50""",
-                    (name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%",),
+                    (like(name) + "%",),
                 )
             ]
 
@@ -286,8 +414,8 @@ class Store:
         if people_only:
             conditions.append("d.automated = 0")
         for fragment in exclude:
-            conditions.append("d.path NOT LIKE ?")
-            params.append(f"%{fragment}%")
+            conditions.append("d.path NOT LIKE ? ESCAPE '\\'")
+            params.append(f"%{like(fragment)}%")
         return conditions, params
 
     def narrow(self, ids, **predicates):
@@ -332,15 +460,17 @@ class Store:
                 ((path, root, mtime) for path, mtime in times.items()),
             )
 
-    def paths_under(self, root, directory):
-        """Indexed paths directly inside one directory, for skipping unchanged folders."""
+    def paths_under(self, root, directory, failed=False):
+        """Indexed paths directly inside one directory, or with `failed` those that could
+        not be read, for skipping unchanged folders."""
+        table = "failures" if failed else "documents"
         with self.connect() as db:
             return [
                 row[0]
                 for row in db.execute(
-                    "SELECT path FROM documents WHERE root = ? AND path LIKE ? AND "
-                    "instr(substr(path, ?), '/') = 0",
-                    (root, f"{directory}/%", len(directory) + 2),
+                    f"SELECT path FROM {table} WHERE root = ? AND path LIKE ? ESCAPE '\\' "
+                    "AND instr(substr(path, ?), '/') = 0",
+                    (root, f"{like(directory)}/%", len(directory) + 2),
                 )
             ]
 
