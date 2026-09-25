@@ -32,6 +32,23 @@ files, and indexing issues.
 `xtoo init` exits `2` for an existing configuration or invalid input. Do not
 expose the server through a tunnel or shared proxy.
 
+## Search syntax
+
+The same syntax works in the browser, `xtoo search` and the assistant interface.
+
+| You type | Finds documents that |
+| --- | --- |
+| `disk clean` | contain every word, each matching the start of an indexed word (`cleanup`) |
+| `"disk cleanup"` | contain those words together, in that order, as whole words |
+| `disk -draft` | contain `disk` and not the whole word `draft` |
+| `disk -"cleanup plan"` | contain `disk` and not that phrase |
+| `-draft` | are anything in the library except those containing `draft` |
+
+A hyphen inside a word, as in `PROJ-4821`, is part of the word, not an exclusion.
+Punctuation and FTS5 operators such as `OR` or `NEAR` are treated as plain words.
+With **Meaning** on, excluded words are left out of what the model compares and
+remove matching documents from the semantic results as well.
+
 ## Conversations and links
 
 Indexed mail carries the date it was sent, not the date it was exported, so results

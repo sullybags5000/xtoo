@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added search syntax: `"quoted phrases"` match words in order, and a leading `-`
+  excludes a word or phrase, in the browser, the terminal and the assistant
+  interface alike. See [Usage](usage.md#search-syntax).
 - A file that cannot be read is no longer read again on every scan. It is
   reported on each scan until it changes, and is retried once `full_scan_hours`
   have passed in case the cause was temporary.

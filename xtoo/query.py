@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from .store import parse
+
 DAY_NS = 86_400_000_000_000
 # A tracker reference, an address on the network or a version: exact strings that
 # full-text search answers precisely and that meaning cannot improve.
@@ -39,6 +41,7 @@ class Query:
             "until": self.until,
             "people_only": self.people_only,
             "exclude": self.exclude,
+            "without": parse(self.text)[1],
         }
 
 

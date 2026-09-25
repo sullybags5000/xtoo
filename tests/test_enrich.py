@@ -127,6 +127,15 @@ def test_every_filter_applies_in_both_search_paths(correspondence, meaning):
 
     assert "robot.msg" not in {item["title"] for item in ask(exclude=("robot",))["items"]}
 
+    # Excluded words narrow the semantic arm too, not only full text. These words bring
+    # the automated message into the semantic results, where only the filter removes it.
+    excluding = run(
+        store,
+        Query(text="upgrade job finished tracker -automated", meaning=meaning),
+        encode=bag_of_words,
+    )
+    assert "robot.msg" not in {item["title"] for item in excluding["items"]}
+
     grouped = ask(collapse=True)
     assert grouped["total"] < everything["total"]
     assert grouped["matched"] >= grouped["total"]
