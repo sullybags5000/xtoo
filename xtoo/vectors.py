@@ -8,6 +8,8 @@ here stays dormant and full-text search is unaffected.
 
 import struct
 
+from .store import parse
+
 MODEL = "minishlab/potion-base-8M"
 DIMENSIONS = 256
 # Vectors are stored with unit length, so distance depends on direction alone and can be
@@ -281,8 +283,10 @@ def search(store, query, encode=None, model_name: str = ""):
     )
     snippets = {item["id"]: item["snippet"] for item in lexical["items"]}
     ranking = [item["id"] for item in lexical["items"]]
-    if query.text.strip():
-        meanings = similar(store, query.text, FUSION_DEPTH, encode=encode, model_name=model_name)
+    # Excluded words and quotation marks mean nothing to the model; exclusion is applied
+    # to its results by `narrow` instead.
+    if words := parse(query.text)[2]:
+        meanings = similar(store, words, FUSION_DEPTH, encode=encode, model_name=model_name)
         allowed = store.narrow(meanings, **query.narrowing())
         ranking = fuse(ranking, [document_id for document_id in meanings if document_id in allowed])
     matched = len(ranking)

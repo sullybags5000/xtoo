@@ -13,7 +13,7 @@ Forty tests cover:
 
 | Area | What is checked |
 | --- | --- |
-| Search | Ranking, literal treatment of query text, prefixes, pagination |
+| Search | Ranking, literal treatment of query text, prefixes, phrases and excluded words, pagination |
 | Scanning | Incremental updates, deletion, exclusions, size limits, unavailable folders, traversal and extraction failures, not rereading unreadable files, batched writes, literal path matching |
 | Extraction | Office, PDF, HTML, scripts, ANSI-encoded text, `extra_text_extensions` |
 | Mail | `.msg` and `.eml` headers, attachment names, bodies, unreadable messages, received dates |
