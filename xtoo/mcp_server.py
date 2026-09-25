@@ -112,7 +112,8 @@ def build(store: Store, excludes=()):
         description=(
             "Full-text search across the user's indexed documents, scripts and email. "
             "Every word must match; words match from the start, so 'migr' finds "
-            "'migration'. Optionally restrict to one file type with kind, such as 'msg' "
+            "'migration'. Quote words to match them as an exact phrase, and prefix a word "
+            "or quoted phrase with - to exclude documents containing it. Optionally restrict to one file type with kind, such as 'msg' "
             "for Outlook mail, 'pdf', or 'py'. collapse shows one row per email "
             "conversation instead of every reply; turn it off to see each message. "
             "since and until are YYYY-MM-DD dates bounding when a document is from. "
