@@ -29,7 +29,9 @@ async function api(path, options = {}) {
 
 function highlighted(element, text) {
   element.replaceChildren();
-  const terms = $("query").value.match(/[\p{L}\p{N}]+/gu) || [];
+  // Excluded words and phrases are what results do not contain; leave them unmarked.
+  const wanted = $("query").value.replace(/(^|\s)-("[^"]*"?|\S+)/gu, " ");
+  const terms = wanted.match(/[\p{L}\p{N}]+/gu) || [];
   if (!terms.length) {
     element.textContent = text;
     return;

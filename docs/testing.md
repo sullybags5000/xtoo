@@ -9,7 +9,7 @@ pytest
 git diff --check
 ```
 
-Fifty-two tests cover:
+Fifty-four tests cover:
 
 | Area | What is checked |
 | --- | --- |
@@ -22,6 +22,7 @@ Fifty-two tests cover:
 | Semantic search | Building, resuming, re-embedding changed documents, dropping removed ones, changing model, chunking, grouping |
 | Interfaces | HTTP API guards and endpoints, MCP tools and their registration, `assistant_excludes` |
 | Terminal | Every `xtoo` command in-process: output, exit codes, filters, malformed input |
+| Browser | The page in headless Chromium against a running server: search, grouping, preview and highlighting, entity links, exclusions, dates, file types, keyboard focus, refresh, and no console or CSP errors |
 
 | Module | Area |
 | --- | --- |
@@ -32,6 +33,7 @@ Fifty-two tests cover:
 | `test_vectors.py` | Semantic search |
 | `test_interfaces.py` | HTTP API, browser contract, MCP tools, CLI setup |
 | `test_cli.py` | Terminal commands |
+| `test_browser.py` | Browser interface |
 
 Shared fixtures live in `conftest.py` and synthetic data in `helpers.py`.
 
@@ -46,6 +48,19 @@ included in the `dev` extra so they normally run. The test that registers the
 assistant tools needs the `mcp` extra and skips without it; neither the `dev`
 extra nor CI installs it, so run `python -m pip install -e '.[dev,mcp]'` to
 include it locally.
+
+The browser tests need Playwright and a Chromium build it can launch, and skip
+themselves otherwise; CI installs neither. To run them locally:
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium   # downloads a browser; skip if one is provided
+pytest tests/test_browser.py
+```
+
+Where a Chromium is provided for Playwright rather than downloaded, install the
+Playwright release that matches its build number, or the tests skip with the
+path Playwright expected.
 
 GitHub Actions runs `ruff check .` and `pytest` on Python 3.10, 3.11, and 3.12
 for pushes and pull requests. The workflow is
