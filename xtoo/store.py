@@ -534,8 +534,12 @@ class Store:
         since=0,
         until=0,
         people_only=False,
+        exact=False,
         exclude=(),
     ):
+        # If exact mode is on, wrap the query in quotes for exact phrase matching
+        if exact and query.strip():
+            query = f'"{query}"'
         expression, without, _ = parse(query)
         empty = {"items": [], "total": 0, "matched": 0, "offset": offset, "limit": limit}
         conditions, params = self.predicates(

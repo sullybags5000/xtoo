@@ -28,6 +28,7 @@ class Query:
     collapse: bool = True
     meaning: bool = False
     people_only: bool = False
+    exact: bool = False
     exclude: tuple = field(default_factory=tuple)
     offset: int = 0
     limit: int = 40
@@ -81,5 +82,6 @@ def run(store, query: Query, encode=None):
         since=query.since,
         until=query.until,
         people_only=query.people_only,
+        exact=query.exact,
         exclude=query.exclude,
     )
