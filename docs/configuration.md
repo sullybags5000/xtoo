@@ -15,7 +15,7 @@ file. See [config.example.toml](../config.example.toml).
 | `attachment_chars` | No | `0` | Characters to read from inside each mail attachment. `0` indexes filenames only. | `4000` |
 | `full_scan_hours` | No | `24` | How often the background scan examines every file rather than only changed folders, and how long an unchanged file that could not be read waits before it is tried again. | `12` |
 | `sync_command` | No | empty | Command `xtoo sync` runs before scanning, typically a Windows export. | `'powershell.exe -File C:\\export.ps1'` |
-| `assistant_excludes` | No | empty | Path fragments an [assistant](assistant.md) may not read, even when asked. | `['/Personal/']` |
+| `assistant_excludes` | No | empty | Path fragments the [MCP server](assistant.md) may not read, even when asked. Does not affect browser or terminal search. | `['/Personal/', '/Private/']` |
 
 Fixed limits are one million extracted characters per document, 100 MB expanded
 Office archive size, 25 MB per mail attachment, and 100,000 characters returned
