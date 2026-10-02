@@ -19,3 +19,8 @@ excluded_dirs = [
 # Scripts (.ps1, .bat, .cmd, .sh, .py, .sql, and similar) are indexed as text by
 # default. List extra plain-text extensions here; they are read, never executed.
 # extra_text_extensions = [".go", ".java", ".psrc"]
+
+# Path fragments the MCP server may not read, even when asked. Does not affect
+# browser or terminal search. Use this to keep private folders from leaving the
+# machine through an assistant.
+# assistant_excludes = ["/Personal/", "/Private/"]
