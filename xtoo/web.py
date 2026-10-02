@@ -62,6 +62,7 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
         collapse: bool = Query(False),
         meaning: bool = Query(False),
         people: bool = Query(False),
+        exact: bool = Query(False),
         since: str = Query("", max_length=10),
         until: str = Query("", max_length=10),
     ):
@@ -75,6 +76,7 @@ def create_app(settings: Settings, *, background: bool = True) -> FastAPI:
                 collapse=collapse,
                 meaning=meaning,
                 people_only=people,
+                exact=exact,
                 offset=offset,
                 limit=limit,
             )

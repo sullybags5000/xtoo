@@ -31,15 +31,31 @@ function highlighted(element, text) {
   element.replaceChildren();
   // Excluded words and phrases are what results do not contain; leave them unmarked.
   const wanted = $("query").value.replace(/(^|\s)-("[^"]*"?|\S+)/gu, " ");
-  const terms = wanted.match(/[\p{L}\p{N}]+/gu) || [];
-  if (!terms.length) {
+  const isExact = $("exact").checked;
+  
+  if (!wanted) {
     element.textContent = text;
     return;
   }
-  const pattern = new RegExp(
-    `(${terms.sort((a, b) => b.length - a.length).join("|")})`,
-    "giu",
-  );
+  
+  let pattern;
+  if (isExact) {
+    // For exact phrase, highlight the exact phrase
+    const escapedQuery = wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    pattern = new RegExp(`(${escapedQuery})`, "giu");
+  } else {
+    // For word search, highlight individual words
+    const terms = wanted.match(/[\p{L}\p{N}]+/gu) || [];
+    if (!terms.length) {
+      element.textContent = text;
+      return;
+    }
+    pattern = new RegExp(
+      `(${terms.sort((a, b) => b.length - a.length).join("|")})`,
+      "giu",
+    );
+  }
+  
   let start = 0;
   for (const match of text.matchAll(pattern)) {
     element.append(document.createTextNode(text.slice(start, match.index)));
@@ -126,6 +142,7 @@ async function search() {
     collapse: $("collapse").checked,
     meaning: $("meaning").checked,
     people: $("people").checked,
+    exact: $("exact").checked,
     since: $("since").value,
     until: $("until").value,
     offset,
@@ -286,7 +303,7 @@ $("kind").addEventListener("change", () => {
   offset = 0;
   search();
 });
-for (const control of ["collapse", "meaning", "people", "since", "until"])
+for (const control of ["collapse", "meaning", "people", "exact", "since", "until"])
   $(control).addEventListener("change", () => {
     offset = 0;
     search();
