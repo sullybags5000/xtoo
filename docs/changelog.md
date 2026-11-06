@@ -6,6 +6,10 @@
   export, so a chosen set of folders can be kept current without exporting
   everything beneath `Inbox`. See [Email](email.md#exporting-chosen-folders).
   Folder names that end in a space in Outlook are now found without typing it.
+- `Export-OutlookMail.ps1` no longer reads a folder message by message when it has
+  no mail newer than `-Days` or `-Since`. Such a folder used to be taken for one
+  where the date filter does not apply, and a large one kept Outlook busy for
+  minutes; the filter now also matches the sent date, which covers Sent Items.
 - Fixed `assistant_excludes` being bypassed by `read_document`, which returned an
   excluded document to an assistant that asked for its id. Ids are sequential, so
   they could be guessed. `list_entities` no longer counts excluded documents or

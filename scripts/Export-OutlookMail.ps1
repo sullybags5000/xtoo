@@ -146,13 +146,13 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
     }
     $items = $folder.Items
     if ($cutoff -ne [datetime]::MinValue) {
-        # Restrict filters inside Outlook and is far faster than walking every item. Its
-        # date literal is locale sensitive, so every item is re-checked below regardless.
+        # Restrict filters inside Outlook and is far faster than walking every item, which
+        # in a large folder keeps Outlook busy for minutes. Outlook reads the date literal
+        # in the user's locale, which is how the 'g' format writes it. SentOn covers Sent
+        # Items, where ReceivedTime may not apply. Every item is still re-checked below.
         try {
-            $filtered = $items.Restrict("[ReceivedTime] >= '" + $cutoff.ToString('MM/dd/yyyy HH:mm') + "'")
-            # An empty result in a folder that holds mail means the property does not
-            # apply here, as in Sent Items. Fall back to the full, client-filtered set.
-            if ($filtered.Count -gt 0 -or $items.Count -eq 0) { $items = $filtered }
+            $when = "'" + $cutoff.ToString('g') + "'"
+            $items = $items.Restrict("[ReceivedTime] >= $when OR [SentOn] >= $when")
         } catch {
             Write-Verbose 'Restrict was rejected; filtering on the client instead.'
         }
