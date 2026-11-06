@@ -17,3 +17,8 @@ data/
 .coverage
 htmlcov/
 .serena/
+
+# Certificates, such as a corporate CA bundle
+*.ca
+*.crt
+*.pem

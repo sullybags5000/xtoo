@@ -12,6 +12,14 @@
     Folder to export, relative to the mailbox root, for example 'Inbox\Projects'.
     Omit it to choose a folder interactively.
 
+.PARAMETER FolderList
+    Text file naming several folders to export, one path from the mailbox root per
+    line, such as 'Inbox\Projects'. Blank lines are ignored. Each folder is exported
+    on its own into Destination\<path>, so 'Inbox\Projects\Alpha' lands in
+    Destination\Inbox\Projects\Alpha, the layout -IncludeSubfolders produces when
+    exporting Inbox. A folder that cannot be found is reported and the rest still
+    run; the script then exits with code 1. Cannot be combined with -FolderPath.
+
 .PARAMETER Destination
     Directory that receives the .msg files. Point Xtoo at this directory.
 
@@ -37,11 +45,16 @@
 .EXAMPLE
     .\Export-OutlookMail.ps1 -FolderPath 'Inbox\Projects' -Since '2025-07-29' -Destination 'C:\Users\me\Documents\MailExport'
     Tops up a folder that was already exported as far as 29 July 2025.
+
+.EXAMPLE
+    .\Export-OutlookMail.ps1 -FolderList 'C:\Users\me\mail-folders.txt' -Days 7 -Destination 'C:\Users\me\Documents\MailExport'
+    Exports only the folders named in mail-folders.txt, each into its own subdirectory.
 #>
 
 [CmdletBinding()]
 param(
     [string]$FolderPath,
+    [string]$FolderList,
     [string]$Destination = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MailExport'),
     [int]$Days = 90,
     [datetime]$Since = [datetime]::MinValue,
@@ -84,8 +97,9 @@ function Get-FolderInteractively($folder) {
 
 function Resolve-FolderPath($root, [string]$path) {
     $folder = $root
-    foreach ($segment in $path.Split('\') | Where-Object { $_ }) {
-        $child = $folder.Folders | Where-Object { $_.Name -eq $segment } | Select-Object -First 1
+    foreach ($segment in $path.Split('\') | Where-Object { $_.Trim() }) {
+        # Outlook allows a folder name to end in a space, which nobody types.
+        $child = $folder.Folders | Where-Object { $_.Name.Trim() -eq $segment.Trim() } | Select-Object -First 1
         if (-not $child) { throw "Folder not found: '$segment' in '$($folder.Name)'." }
         $folder = $child
     }
@@ -185,9 +199,15 @@ function Export-Folder($folder, [string]$target, [datetime]$cutoff) {
     }
 }
 
+if ($FolderPath -and $FolderList) { throw 'Use -FolderPath or -FolderList, not both.' }
+if ($FolderList) {
+    # Read before touching Outlook, so a mistyped list path fails fast.
+    $paths = @(Get-Content -LiteralPath $FolderList -Encoding UTF8 | Where-Object { $_.Trim() })
+    if ($paths.Count -eq 0) { throw "No folders listed in '$FolderList'." }
+}
+
 $namespace = (New-Object -ComObject Outlook.Application).GetNamespace('MAPI')
 $root = $namespace.GetDefaultFolder(6).Parent  # mailbox root, so Sent Items is reachable too
-$folder = if ($FolderPath) { Resolve-FolderPath $root $FolderPath } else { Get-FolderInteractively $root }
 $cutoff = if ($Since -gt [datetime]::MinValue) {
     $Since
 } elseif ($Days -gt 0) {
@@ -195,9 +215,36 @@ $cutoff = if ($Since -gt [datetime]::MinValue) {
 } else {
     [datetime]::MinValue
 }
-$target = Join-Path $Destination (Get-SafeName $folder.Name)
-
 $window = if ($cutoff -eq [datetime]::MinValue) { 'all messages' } else { "from $($cutoff.ToString('yyyy-MM-dd'))" }
+
+if ($FolderList) {
+    $missing = @()
+    Write-Host "Exporting $($paths.Count) listed folders ($window) to $Destination" -ForegroundColor Green
+    foreach ($path in $paths) {
+        try {
+            $folder = Resolve-FolderPath $root $path
+        } catch {
+            Write-Warning $_.Exception.Message
+            $missing += $path.Trim()
+            continue
+        }
+        $target = $Destination
+        foreach ($segment in $path.Split('\') | Where-Object { $_.Trim() }) {
+            $target = Join-Path $target (Get-SafeName $segment)
+        }
+        Export-Folder $folder $target $cutoff
+    }
+    if ($missing) {
+        Write-Host "`nNot found in Outlook, so not exported:" -ForegroundColor Yellow
+        $missing | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+        exit 1
+    }
+    Write-Host "`nDone." -ForegroundColor Green
+    return
+}
+
+$folder = if ($FolderPath) { Resolve-FolderPath $root $FolderPath } else { Get-FolderInteractively $root }
+$target = Join-Path $Destination (Get-SafeName $folder.Name)
 Write-Host "Exporting '$($folder.Name)' ($window) to $target" -ForegroundColor Green
 Export-Folder $folder $target $cutoff
 Write-Host "`nDone. Add this folder to your Xtoo configuration as a WSL path." -ForegroundColor Green

@@ -98,15 +98,48 @@ That picks a folder interactively and exports the last 90 days to
 
 | Parameter | Default | Behavior |
 | --- | --- | --- |
-| `-FolderPath` | interactive picker | Path from the mailbox root, such as `Inbox\Projects` or `Sent Items`. |
+| `-FolderPath` | interactive picker | Path from the mailbox root, such as `Inbox\Projects` or `Sent Items`. A trailing space in an Outlook folder name need not be typed. |
+| `-FolderList` | none | Text file of folder paths to export, one per line; see [Exporting chosen folders](#exporting-chosen-folders). Cannot be combined with `-FolderPath`. |
 | `-Destination` | `Documents\MailExport` | Parent directory for exported messages. |
 | `-Days` | `90` | Only messages received in the last N days; `0` exports the whole folder. |
-| `-IncludeSubfolders` | off | Also exports child folders into matching subdirectories. |
+| `-Since` | none | Only messages received on or after this date, such as `2025-07-29`. Takes precedence over `-Days`. |
+| `-IncludeSubfolders` | off | Also exports child folders into matching subdirectories. With `-FolderList`, applies to every listed folder. |
 
 Filenames are `<timestamp>_<subject>_<id>.msg`, where the id is derived from the
 Outlook entry ID. Re-running the script therefore skips messages already on disk
 and reports them as *already present*, so it is safe to schedule. Non-mail items
 such as meeting requests and calendar entries are skipped.
+
+### Exporting chosen folders
+
+`-IncludeSubfolders` on `Inbox` exports every folder beneath it, including ones
+you may not want indexed. To export only some, list them in a text file on
+Windows, one path from the mailbox root per line:
+
+```text
+Inbox
+Inbox\Projects
+Inbox\Projects\Alpha
+Inbox\Vendors
+Sent Items
+```
+
+```powershell
+.\Export-OutlookMail.ps1 -FolderList 'C:\Users\YOUR_USER\mail-folders.txt' -Days 7 `
+  -Destination 'C:\Users\YOUR_USER\Documents\MailExport'
+```
+
+Each listed folder is exported on its own, so `Inbox` exports only the messages
+directly in the Inbox, and a child folder is exported only if it is listed too.
+Each lands in `Destination\<path>`: `Inbox\Projects\Alpha` is written to
+`MailExport\Inbox\Projects\Alpha`. That is the same layout `-FolderPath Inbox
+-IncludeSubfolders` produces, so a list can take over from such an export without
+exporting its messages a second time.
+
+A folder that cannot be found, because it was renamed or moved, is reported by
+path and skipped; the remaining folders are still exported, and the script exits
+with code 1 so a scheduled run or `xtoo sync` shows that something was missed.
+Keep the list file outside the repository: it names your folders.
 
 If PowerShell refuses to run the file, either unblock it
 (`Unblock-File .\Export-OutlookMail.ps1`) or start it with
@@ -146,7 +179,9 @@ Scheduler, create a task that runs at logon and every few hours:
 - Arguments: `-NoProfile -ExecutionPolicy Bypass -File "C:\path\to\Export-OutlookMail.ps1" -FolderPath "Inbox" -Days 7 -Destination "C:\Users\YOUR_USER\Documents\MailExport"`
 
 Use a small `-Days` window for frequent runs; messages already exported are
-skipped cheaply.
+skipped cheaply. To keep a chosen set of folders current, use
+`-FolderList "C:\Users\YOUR_USER\mail-folders.txt"` in place of `-FolderPath`, in
+the scheduled task or in `sync_command`.
 
 ## Limitations
 
